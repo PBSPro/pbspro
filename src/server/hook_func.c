@@ -203,6 +203,7 @@ extern pbs_list_head svr_modifyjob_hooks;
 extern pbs_list_head svr_resvsub_hooks;
 extern pbs_list_head svr_movejob_hooks;
 extern pbs_list_head svr_runjob_hooks;
+extern pbs_list_head svr_endjob_hooks;
 extern pbs_list_head svr_management_hooks;
 extern pbs_list_head svr_modifyvnode_hooks;
 extern pbs_list_head svr_periodic_hooks;
@@ -3822,6 +3823,10 @@ process_hooks(struct batch_request *preq, char *hook_msg, size_t msg_len,
 				"Did not find a job tied to runjob request!");
 			return (-1);
 		}
+	} else if (preq->rq_type == PBS_BATCH_EndJob) {
+		hook_event = HOOK_EVENT_ENDJOB;
+		req_ptr.rq_end = (struct rq_endjob *)&preq->rq_ind.rq_end;
+		head_ptr = &svr_endjob_hooks;
 	} else if (preq->rq_type == PBS_BATCH_Manager) {
 		hook_event = HOOK_EVENT_MANAGEMENT;
 		preq->rq_ind.rq_management.rq_reply = &preq->rq_reply;
@@ -3864,6 +3869,8 @@ process_hooks(struct batch_request *preq, char *hook_msg, size_t msg_len,
 		} else if (preq->rq_type == PBS_BATCH_RunJob || preq->rq_type == PBS_BATCH_AsyrunJob ||
 				preq->rq_type == PBS_BATCH_AsyrunJob_ack) {
 			phook_next = (hook *)GET_NEXT(phook->hi_runjob_hooks);
+		} else if (preq->rq_type == PBS_BATCH_EndJob) {
+			phook_next = (hook *)GET_NEXT(phook->hi_endjob_hooks);
 		} else if (preq->rq_type == PBS_BATCH_Manager) {
 			phook_next = (hook *)GET_NEXT(phook->hi_management_hooks);
 		} else if (preq->rq_type == PBS_BATCH_ModifyVnode) {

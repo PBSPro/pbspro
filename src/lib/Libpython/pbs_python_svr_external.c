@@ -610,6 +610,7 @@ hook_input_param_init(hook_input_param_t *hook_input)
 	hook_input->rq_move = NULL;
 	hook_input->rq_prov = NULL;
 	hook_input->rq_run = NULL;
+	hook_input->rq_end = NULL;
 	hook_input->progname = NULL;
 	hook_input->argv_list = NULL;
 	hook_input->env = NULL;
@@ -635,6 +636,7 @@ hook_output_param_init(hook_output_param_t *hook_output)
 	hook_output->rq_move = NULL;
 	hook_output->rq_prov = NULL;
 	hook_output->rq_run = NULL;
+	hook_output->rq_end = NULL;
 	hook_output->progname = NULL;
 	hook_output->argv_list = NULL;
 	hook_output->env = NULL;

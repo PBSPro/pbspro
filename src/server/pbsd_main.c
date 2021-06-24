@@ -884,6 +884,7 @@ main(int argc, char **argv)
 	CLEAR_HEAD(svr_resvsub_hooks);
 	CLEAR_HEAD(svr_movejob_hooks);
 	CLEAR_HEAD(svr_runjob_hooks);
+	CLEAR_HEAD(svr_endjob_hooks);
 	CLEAR_HEAD(svr_management_hooks);
 	CLEAR_HEAD(svr_modifyvnode_hooks);
 	CLEAR_HEAD(svr_periodic_hooks);

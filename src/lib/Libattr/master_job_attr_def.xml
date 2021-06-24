@@ -201,6 +201,23 @@
       </member_verify_function>
    </attributes>
    <attributes>
+      <member_index>JOB_ATR_in_resv</member_index>
+      <member_name>ATTR_resv</member_name>
+      <member_at_decode>decode_str</member_at_decode>
+      <member_at_encode>encode_str</member_at_encode>
+      <member_at_set>set_str</member_at_set>
+      <member_at_comp>comp_str</member_at_comp>
+      <member_at_free>free_str</member_at_free>
+      <member_at_action>NULL_FUNC</member_at_action>
+      <member_at_flags>READ_ONLY</member_at_flags>
+      <member_at_type>ATR_TYPE_STR</member_at_type>
+      <member_at_parent>PARENT_TYPE_JOB</member_at_parent>
+      <member_verify_function>
+         <ECL>NULL_VERIFY_DATATYPE_FUNC</ECL>
+         <ECL>NULL_VERIFY_VALUE_FUNC</ECL>
+      </member_verify_function>
+   </attributes>
+   <attributes>
       <member_index>JOB_ATR_in_queue</member_index>
       <member_name>ATTR_queue</member_name>
       <member_at_decode>decode_str</member_at_decode>
@@ -891,6 +908,23 @@
    <attributes>
       <member_index>JOB_ATR_stime</member_index>
       <member_name>ATTR_stime</member_name>
+      <member_at_decode>decode_l</member_at_decode>
+      <member_at_encode>encode_l</member_at_encode>
+      <member_at_set>set_l</member_at_set>
+      <member_at_comp>comp_l</member_at_comp>
+      <member_at_free>free_null</member_at_free>
+      <member_at_action>NULL_FUNC</member_at_action>
+      <member_at_flags>READ_ONLY</member_at_flags>
+      <member_at_type>ATR_TYPE_LONG</member_at_type>
+      <member_at_parent>PARENT_TYPE_JOB</member_at_parent>
+      <member_verify_function>
+         <ECL>verify_datatype_long</ECL>
+         <ECL>NULL_VERIFY_VALUE_FUNC</ECL>
+      </member_verify_function>
+   </attributes>
+      <attributes>
+      <member_index>JOB_ATR_endtime</member_index>
+      <member_name>ATTR_endtime</member_name>
       <member_at_decode>decode_l</member_at_decode>
       <member_at_encode>encode_l</member_at_encode>
       <member_at_set>set_l</member_at_set>

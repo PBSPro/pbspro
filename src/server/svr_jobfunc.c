@@ -601,7 +601,9 @@ svr_setjobstate(job *pjob, char newstate, int newsubstate)
 	}
 
 	if (pjob->newobj) /* object was never saved/loaded before, so new object */
+	{
 		return 0;
+	}
 
 	return (job_save_db(pjob));
 }

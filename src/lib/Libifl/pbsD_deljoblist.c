@@ -296,8 +296,11 @@ recv_deljob(int fd)
 	struct batch_deljob_status *ret = NULL;
 
 	reply = PBSD_rdrpy(fd);
-	if (reply == NULL && pbs_errno == PBSE_NONE)
-		pbs_errno = PBSE_PROTOCOL;
+	if (reply == NULL) {
+		if (pbs_errno == PBSE_NONE) {
+			pbs_errno = PBSE_PROTOCOL;
+		}
+	}
 	else if (reply->brp_choice != BATCH_REPLY_CHOICE_NULL &&
 		 reply->brp_choice != BATCH_REPLY_CHOICE_Text &&
 		 reply->brp_choice != BATCH_REPLY_CHOICE_Delete)

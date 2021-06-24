@@ -291,7 +291,10 @@ conn_to_mom_failed(job *pjob, void(*func)(struct work_task *))
 static void
 end_job(job *pjob, int isexpress)
 {
+	struct batch_request *preq;
+	char hook_msg[HOOK_MSG_SIZE] = {0};
 	char *rec = "";
+	int rc;
 
 	if (isexpress) {
 		log_event(PBSEVENT_DEBUG, PBS_EVENTCLASS_JOB, LOG_DEBUG, pjob->ji_qs.ji_jobid, "express end of job");
@@ -303,6 +306,27 @@ end_job(job *pjob, int isexpress)
 		set_last_used_time_node(pjob, 0);
 	}
 
+	/* set job endtime to time_now */
+	pjob->ji_qs.ji_endtime = time_now;
+	set_jattr_l_slim(pjob, JOB_ATR_endtime, pjob->ji_qs.ji_endtime, SET);
+
+	/* Allocate space for the endjob hook event params */
+	preq = alloc_br(PBS_BATCH_EndJob);
+	if (preq == NULL) {
+		log_err(PBSE_INTERNAL, __func__, "rq_endjob alloc failed");
+	} else {
+		(preq->rq_ind.rq_end).rq_pjob = pjob;
+
+		/*
+		 * Call process_hooks
+	 	 */
+		rc = process_hooks(preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt);
+		if (rc == -1) {
+			sprintf(log_buffer, "rq_endjob process_hooks call failed");
+			log_err(-1, __func__, log_buffer);
+		}
+		free_br(preq);
+	}
 
 	if (pjob->ji_momhandle != -1 && pjob->ji_mom_prot == PROT_TCP)
 		svr_disconnect(pjob->ji_momhandle);
@@ -783,6 +807,7 @@ on_job_rerun(struct work_task *ptask)
 {
 	int		      handle;
 	char		      newstate;
+	char hook_msg[HOOK_MSG_SIZE] = {0};
 	int		      newsubst;
 	job		     *pjob;
 	struct batch_request *preq;
@@ -1067,6 +1092,29 @@ on_job_rerun(struct work_task *ptask)
 				/* all went ok with the delete by Mom(s) */
 				free_br(preq);
 				preq = NULL;
+
+				/* set job endtime to time_now */
+				pjob->ji_qs.ji_endtime = time_now;
+				set_jattr_l_slim(pjob, JOB_ATR_endtime, pjob->ji_qs.ji_endtime, SET);
+
+				/* Allocate space for the endjob hook event params */
+				preq = alloc_br(PBS_BATCH_EndJob);
+				if (preq == NULL) {
+					log_err(PBSE_INTERNAL, __func__, "rq_endjob alloc failed");
+				} else {
+					(preq->rq_ind.rq_end).rq_pjob = pjob;
+
+					/*
+					* Call process_hooks
+					*/
+					rc = process_hooks(preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt);
+					if (rc == -1) {
+						sprintf(log_buffer, "rq_endjob process_hooks call failed");
+						log_err(-1, __func__, log_buffer);
+					}
+					free_br(preq);
+				}
+
 				if (handle != -1 && pjob->ji_mom_prot == PROT_TCP)
 					svr_disconnect(handle);
 

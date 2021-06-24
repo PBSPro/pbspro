@@ -73,6 +73,7 @@
 /* External data */
 extern char *msg_job_end_stat;
 extern int   resc_access_perm;
+extern time_t time_now;
 
 /*
  * list of job attributes to copy from the parent Array job
@@ -328,6 +329,9 @@ update_sj_parent(job *parent, job *sj, char *sjid, char oldstate, char newstate)
 void
 chk_array_doneness(job *parent)
 {
+	struct batch_request *preq;
+	char hook_msg[HOOK_MSG_SIZE] = {0};
+	int rc;
 	ajinfo_t *ptbl = NULL;
 
 	if (parent == NULL || parent->ji_ajinfo == NULL)
@@ -344,11 +348,40 @@ chk_array_doneness(job *parent)
 		parent->ji_qs.ji_un_type = JOB_UNION_TYPE_EXEC;
 		parent->ji_qs.ji_un.ji_exect.ji_momaddr = 0;
 		parent->ji_qs.ji_un.ji_exect.ji_momport = 0;
-		parent->ji_qs.ji_un.ji_exect.ji_exitstat = get_jattr_long(parent, JOB_ATR_exit_status);
+
+		parent->ji_qs.ji_un.ji_exect.ji_exitstat = get_jattr_long(parent, JOB_ATR_exit_status);		
 
 		check_block(parent, "");
 		if (check_job_state(parent, JOB_STATE_LTR_BEGUN)) {
 			char acctbuf[40];
+
+			/* set parent endtime to time_now */
+			parent->ji_qs.ji_endtime = time_now;
+			set_jattr_l_slim(parent, JOB_ATR_endtime, parent->ji_qs.ji_endtime, SET);
+
+			/* Allocate space for the endjob hook event params */
+			preq = alloc_br(PBS_BATCH_EndJob);
+			if (preq) {
+				(preq->rq_ind.rq_end).rq_pjob = parent;
+
+				/* update parent job state to 'F' */
+				sprintf(log_buffer, "rq_endjob svr_setjobstate update parent job state to 'F'");
+				log_err(-1, __func__, log_buffer);
+				svr_setjobstate(parent, JOB_STATE_LTR_FINISHED, JOB_SUBSTATE_FINISHED);
+
+				/*
+				* Call process_hooks
+				*/
+				rc = process_hooks(preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt);
+				if (rc == -1) {
+					sprintf(log_buffer, "rq_endjob process_hooks call failed");
+					log_err(-1, __func__, log_buffer);
+				}
+				free_br(preq);
+			} else {
+				log_err(PBSE_INTERNAL, __func__, "rq_endjob alloc failed");
+			}
+
 			/* if BEGUN, issue 'E' account record */
 			sprintf(acctbuf, msg_job_end_stat, parent->ji_qs.ji_un.ji_exect.ji_exitstat);
 			account_job_update(parent, PBS_ACCT_LAST);

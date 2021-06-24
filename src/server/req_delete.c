@@ -762,6 +762,8 @@ req_deletejob2(struct batch_request *preq, job *pjob)
 {
 	int abortjob = 0;
 	char *sig;
+	char hook_msg[HOOK_MSG_SIZE] = {0};
+	char *rec = "";
 	int forcedel = 0;
 	struct work_task *pwtold;
 	struct work_task *pwtnew;
@@ -968,6 +970,7 @@ req_deletejob2(struct batch_request *preq, job *pjob)
 			log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_INFO,
 				pjob->ji_qs.ji_jobid, "Delete forced");
 			acct_del_write(pjob->ji_qs.ji_jobid, pjob, preq, 0);
+
 			/*
 			 * If we are waiting for preemption to be complete and someone does a qdel -Wforce
 			 * we need to reply back to the scheduler.  We need to reply success so we don't
@@ -984,8 +987,52 @@ req_deletejob2(struct batch_request *preq, job *pjob)
 				if (preply->brp_un.brp_deletejoblist.tot_rpys == preply->brp_un.brp_deletejoblist.tot_jobs)
 					reply_ack(preq);
 			}
+
+			/* set job endtime to time_now */
+			pjob->ji_qs.ji_endtime = time_now;
+			set_jattr_l_slim(pjob, JOB_ATR_endtime, pjob->ji_qs.ji_endtime, SET);
+
+			/* Allocate space for the endjob hook event params */
+			temp_preq = alloc_br(PBS_BATCH_EndJob);
+			if (temp_preq == NULL) {
+				log_err(PBSE_INTERNAL, __func__, "rq_endjob alloc failed");
+			} else {
+				(temp_preq->rq_ind.rq_end).rq_pjob = pjob;
+
+				/*
+				* Call process_hooks
+				*/
+				rc = process_hooks(temp_preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt);
+				if (rc == -1) {
+					sprintf(log_buffer, "rq_endjob process_hooks call failed");
+					log_err(-1, __func__, log_buffer);
+				}
+				free_br(temp_preq);
+			}
 			discard_job(pjob, "Forced Delete", 1);
 			rel_resc(pjob);
+
+			account_job_update(pjob, PBS_ACCT_LAST);
+			account_jobend(pjob, pjob->ji_acctrec, PBS_ACCT_END);
+
+			if (pjob->ji_acctrec)
+				rec = pjob->ji_acctrec;
+
+			if (get_sattr_long(SVR_ATR_log_events) & PBSEVENT_JOB_USAGE) {
+				/* log events set to record usage */
+				log_event(PBSEVENT_JOB_USAGE | PBSEVENT_JOB_USAGE,
+					PBS_EVENTCLASS_JOB, LOG_INFO,
+					pjob->ji_qs.ji_jobid, rec);
+			} else {
+				char *pc;
+
+				/* no usage in log, truncate messge */
+
+				if ((pc = strchr(rec, ' ')) != NULL)
+					*pc = '\0';
+				log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_INFO,
+					pjob->ji_qs.ji_jobid, rec);
+			}
 
 			if (is_mgr) {
 				/*
@@ -1042,8 +1089,9 @@ req_deletejob2(struct batch_request *preq, job *pjob)
 		 * the job is not transiting (though it may have been) and
 		 * is not running, so abort it.
 		 */
-
-		abortjob = 1; /* set flag to abort job after mail sent */
+		if (!(pjob->ji_qs.ji_svrflags & JOB_SVFLG_ArrayJob)) {
+			abortjob = 1; /* set flag to abort job after mail sent */
+		}
 	}
 	/*
 	 * Log delete and if requesting client is not job owner, send mail.
@@ -1051,7 +1099,7 @@ req_deletejob2(struct batch_request *preq, job *pjob)
 
 	acct_del_write(pjob->ji_qs.ji_jobid, pjob, preq, 0);
 
-	if ((pjob->ji_qs.ji_svrflags & JOB_SVFLG_ArrayJob) && !forcedel)
+	if (pjob->ji_qs.ji_svrflags & JOB_SVFLG_ArrayJob)
 		chk_array_doneness(pjob);
 	else if (abortjob) {
 		if (check_job_state(pjob, JOB_STATE_LTR_EXITING))

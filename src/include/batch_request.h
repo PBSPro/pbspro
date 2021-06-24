@@ -175,6 +175,13 @@ struct rq_runjob {
 	unsigned long rq_resch;
 };
 
+/* EndJob */
+struct rq_endjob {
+	struct job *rq_pjob;
+	char rq_jid[PBS_MAXSVRJOBID + 1];
+	char *rq_destin;
+};
+
 /* SignalJob */
 struct rq_signal {
 	char rq_jid[PBS_MAXSVRJOBID + 1];
@@ -324,6 +331,7 @@ struct batch_request {
 		char rq_rerun[PBS_MAXSVRJOBID + 1];
 		struct rq_rescq rq_rescq;
 		struct rq_runjob rq_run;
+		struct rq_endjob rq_end;
 		struct rq_selstat rq_select;
 		int rq_shutdown;
 		struct rq_signal rq_signal;

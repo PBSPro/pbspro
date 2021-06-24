@@ -125,6 +125,7 @@ prt_job_struct(job *pjob, char *state, char *substate)
 	printf("svrflgs:\t0x%x (%d)\n", pjob->ji_qs.ji_svrflags,
 		pjob->ji_qs.ji_svrflags);
 	printf("stime:\t\t%ld\n", (long)pjob->ji_qs.ji_stime);
+	printf("stime:\t\t%ld\n", (long)pjob->ji_qs.ji_endtime);
 	printf("file base:\t%s\n", pjob->ji_qs.ji_fileprefix);
 	printf("queue:\t\t%s\n", pjob->ji_qs.ji_queue);
 	switch (pjob->ji_qs.ji_un_type) {

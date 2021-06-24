@@ -547,6 +547,7 @@ struct job {
 		int ji_jsversion;   /* job structure version - JSVERSION */
 		int ji_svrflags;    /* server flags */
 		time_t ji_stime;    /* time job started execution */
+		time_t ji_endtime;   /* time job has ended execution */
 		char ji_jobid[PBS_MAXSVRJOBID + 1];   /* job identifier */
 		char ji_fileprefix[PBS_JOBBASE + 1];  /* no longer used */
 		char ji_queue[PBS_MAXQUEUENAME + 1];  /* name of current queue */

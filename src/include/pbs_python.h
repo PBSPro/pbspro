@@ -120,6 +120,7 @@ struct python_script {
  * @param[in]	rq_move - maps to a struct rq_move batch request.
  * @param[in]	rq_prov - maps to a struct prov_vnode_info.
  * @param[in]	rq_run - maps to a struct rq_runjob batch request.
+ * @param[in]	rq_end - maps to a struct rq_endjob batch request.
  * @param[in]	progname - value to pbs.event().progname in an execjob_launch
  * 				hook.
  * @param[in]	argv_list - pbs.event().argv but in list form, used by
@@ -145,6 +146,7 @@ typedef struct	hook_input_param {
 	void		*rq_move;
 	void		*rq_prov;
 	void		*rq_run;
+	void        *rq_end;
 	char		*progname;
 	pbs_list_head	*argv_list;
 	char		*env;
@@ -168,6 +170,7 @@ typedef struct	hook_input_param {
  * @param[out]	rq_move - resultant struct rq_move batch request values.
  * @param[out]	rq_prov - resultant struct prov_vnode_info values.
  * @param[out]	rq_run - resultant struct rq_runjob batch request values.
+ * @param[in]	rq_end - maps to a struct rq_endjob batch request.
  * @param[out]	progname - resultant value to pbs.event().progname
  * 			   after executing execjob_launch hook.
  * @param[out]	argv_list - resultant pbs.event().argv value after
@@ -188,6 +191,7 @@ typedef struct	hook_output_param {
 	void		*rq_move;
 	void		*rq_prov;
 	void		*rq_run;
+	void        *rq_end;
 	char		**progname;
 	pbs_list_head	*argv_list;
 	char		**env;

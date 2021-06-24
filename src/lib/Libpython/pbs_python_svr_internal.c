@@ -113,6 +113,8 @@ extern u_Long		pps_size_to_kbytes(PyObject *l);
 extern PyObject * svrattrl_list_to_pyobject(pbs_list_head *);
 extern PyObject * svrattrl_to_server_attribute(svrattrl *);
 
+static PyObject *
+_pps_helper_get_resv(resc_resv *presv_o, const char *resvid, char *perf_label);
 
 /* A dictionary for quick access to the pbs.v1 EMBEDDED_EXTENSION_TYPES */
 static
@@ -3560,6 +3562,7 @@ _pps_helper_get_job(job *pjob_o, const char *jobid, const char *qname, char *per
 	PyObject *py_job = NULL;
 	PyObject *py_jargs = NULL;
 	PyObject *py_que = NULL;
+	PyObject *py_resv = NULL;
 	PyObject *py_server = NULL;
 	job *pjob;
 	int tmp_rc = -1;
@@ -3647,6 +3650,19 @@ _pps_helper_get_job(job *pjob_o, const char *jobid, const char *qname, char *per
 				(void)PyObject_SetAttrString(py_job, ATTR_queue, py_que);
 			}
 			Py_DECREF(py_que);	/* we no longer need to reference */
+		}
+	}
+
+	if (pjob->ji_myResv) {
+		/* set job.resv to actual reservation object */
+		py_resv = _pps_helper_get_resv(pjob->ji_myResv,
+			pjob->ji_myResv->ri_qs.ri_resvID, perf_label);/* NEW ref */
+		if (py_resv) {
+			if (PyObject_HasAttrString(py_job, ATTR_resv)) {
+				/* py_resv ref ct incremented as part of py_job */
+				(void)PyObject_SetAttrString(py_job, ATTR_resv, py_resv);
+			}
+			Py_DECREF(py_resv);	/* we no longer need to reference */
 		}
 	}
 
@@ -5754,6 +5770,40 @@ _pbs_python_event_set(unsigned int hook_event, char *req_user, char *req_host,
 				goto event_set_exit;
 			}
 		}
+	} else if (hook_event == HOOK_EVENT_ENDJOB) {
+		struct rq_endjob	*rqj = req_params->rq_end;
+		/* initialize params to None */
+		(void)PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_JOB,
+			Py_None);
+
+		if (IS_PBS_PYTHON_CMD(pbs_python_daemon_name)) {
+			if (py_pbs_statobj != NULL) {
+				Py_XDECREF(py_jargs);  /* discard previously used value */
+				py_jargs = Py_BuildValue("(sss)", "job", rqj->rq_pjob->ji_qs.ji_jobid,
+					pbs_conf.pbs_server_name); /* NEW ref */
+				py_job = PyObject_Call(py_pbs_statobj, py_jargs,
+					NULL);/*NEW*/
+				hook_set_mode = C_MODE; /* ensure still in C mode */
+			}
+		} else {
+			py_job = _pps_helper_get_job(NULL, rqj->rq_pjob->ji_qs.ji_jobid, NULL, perf_label);
+			/* NEW - we own ref */
+		}
+
+		if (!py_job || (py_job == Py_None)) {
+			LOG_ERROR_ARG2("%s:failed to create job %s's python "
+				"job object", PY_TYPE_EVENT, rqj->rq_pjob->ji_qs.ji_jobid);
+			goto event_set_exit;
+		}
+
+		/* py_job handed off to py_event_parm...reference count incremented */
+		rc = PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_JOB, py_job);
+
+		if (rc == -1) {
+			LOG_ERROR_ARG2("%s:failed to set param attribute <%s>",
+				PY_TYPE_EVENT, PY_EVENT_PARAM_JOB);
+			goto event_set_exit;
+		}				
 	} else if (hook_event == HOOK_EVENT_MANAGEMENT) {
 		PyObject *py_attr = (PyObject *) NULL;
 		struct rq_management *rqj = req_params->rq_manage;

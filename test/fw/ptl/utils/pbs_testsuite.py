@@ -40,6 +40,7 @@
 
 import calendar
 import grp
+import inspect
 import logging
 import os
 import platform
@@ -48,6 +49,7 @@ import socket
 import subprocess
 import sys
 import time
+import textwrap
 import unittest
 from distutils.util import strtobool
 
@@ -224,6 +226,13 @@ def testparams(**kwargs):
         wrapper.__name__ = function.__name__
         return wrapper
     return decorated
+
+
+def generate_hook_body_from_func(hook_func, *args):
+    return inspect.getsource(hook_func) + textwrap.dedent(
+        """
+        %s%s
+        """ % (hook_func.__name__, str(args)))
 
 
 class PBSServiceInstanceWrapper(dict):
@@ -493,7 +502,7 @@ class PBSTestSuite(unittest.TestCase):
             for mom in self.moms.values():
                 ret = mom.save_configuration()
                 if not ret:
-                    cls.logger.error("Failed to save mom's test setup")
+                    self.logger.error("Failed to save mom's test setup")
                     raise Exception("Failed to save mom's test setup")
             ret = self.scheduler.save_configuration(path, 'w')
             if ret:
