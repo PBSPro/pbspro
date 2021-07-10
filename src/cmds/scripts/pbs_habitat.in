@@ -59,6 +59,12 @@ get_db_user() {
 }
 
 chk_dataservice_user() {
+
+	# verify that postgres has been initalized correctly
+	if [ ! -d /var/lib/pgsql/ ]; then
+		postgresql-setup --initdb --unit postgresql
+	fi
+
 	chk_usr="$1"
 
 	# do user-id related stuff first

@@ -17,7 +17,7 @@ How to install PBS using the configure script.
       libX11-devel libXt-devel libedit-devel libical-devel \
       ncurses-devel perl postgresql-devel postgresql-contrib python3-devel tcl-devel \
       tk-devel swig expat-devel openssl-devel libXext libXft \
-      autoconf automake gcc-c++
+      autoconf automake gcc-c++ postgresql-server
 
   For CentOS-7 systems you should run the following command as root:
 
