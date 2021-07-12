@@ -733,6 +733,7 @@ get_job_update(job *pjob)
 	}
 #endif
 	if ((at = get_jattr(pjob, JOB_ATR_session_id))->at_flags & ATR_VFLAG_MODIFY) {
+		log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_JOB, LOG_DEBUG, pjob->ji_qs.ji_jobid, "SID is: %ld", get_jattr_long(pjob, JOB_ATR_session_id));
 		job_attr_def[JOB_ATR_session_id].at_encode(at, &prused->ru_attr,
 							   job_attr_def[JOB_ATR_session_id].at_name,
 							   NULL, ATR_ENCODE_CLIENT, NULL);
@@ -890,7 +891,8 @@ send_resc_used(int cmd, int count, ruu *rud)
 
 	if (count == 0 || rud == NULL || server_stream < 0)
 		return;
-	DBPRT(("send_resc_used update to server on stream %d\n", server_stream))
+	log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_NODE, LOG_DEBUG, "",
+			"send_resc_used update to server on stream %d\n", server_stream);
 
 	ret = is_compose(server_stream, cmd);
 	if (ret != DIS_SUCCESS)

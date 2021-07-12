@@ -518,6 +518,9 @@ svr_setjobstate(job *pjob, char newstate, int newsubstate)
 		(check_job_state(pjob, newstate) && (check_job_substate(pjob, newsubstate))))
 		return (0);
 
+	log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_JOB, LOG_INFO, pjob->ji_qs.ji_jobid,
+				"Updated job state to %d and substate to %d", newstate, newsubstate);
+
 	/*
 	 * if its is a new job, then don't update counts, svr_enquejob() will
 	 * take care of that, also req_commit() will see that the job is saved.

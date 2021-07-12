@@ -688,6 +688,8 @@ is_request(int stream, int version)
 	command = disrsi(stream, &ret);
 	if (ret != DIS_SUCCESS)
 		goto err;
+	
+	log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_SERVER, LOG_DEBUG, msg_daemonname, "Received request: %d", command);
 
 	switch (command) {
 

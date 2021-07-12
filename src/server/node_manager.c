@@ -2130,6 +2130,8 @@ stat_update(int stream)
 				 * it may have already been changed to:
 				 * - EXITING if the OBIT arrived first.
 				 */
+				log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_JOB, LOG_DEBUG, pjob->ji_qs.ji_jobid,
+				        "Received session ID for job: %ld", get_jattr_long(pjob, JOB_ATR_session_id));
 				if ((check_job_substate(pjob, JOB_SUBSTATE_PRERUN)) ||
 					(check_job_substate(pjob, JOB_SUBSTATE_PROVISION))) {
 					/* log acct info and make RUNNING */
@@ -2155,8 +2157,10 @@ stat_update(int stream)
 				log_event(PBSEVENT_DEBUG3, PBS_EVENTCLASS_JOB,
 					LOG_DEBUG, pjob->ji_qs.ji_jobid,
 					"update from Mom without session id");
-			} else
+			} else {
+				log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_JOB, LOG_DEBUG, pjob->ji_qs.ji_jobid, "Received the same SID as before: %ld", get_jattr_long(pjob, JOB_ATR_session_id));
 				job_save_db(pjob);
+			}
 		}
 		(void)free(rused.ru_comment);
 		rused.ru_comment = NULL;
@@ -4310,6 +4314,7 @@ badcon:
 found:
 	psvrmom = (mom_svrinfo_t *)(pmom->mi_data);
 	pdmninfo = pmom->mi_dmn_info;
+	log_eventf(PBSEVENT_DEBUG3, PBS_EVENTCLASS_SERVER, LOG_DEBUG, msg_daemonname, "Received request2: %d", command);
 
 	switch (command) {
 

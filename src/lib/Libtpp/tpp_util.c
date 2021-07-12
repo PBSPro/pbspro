@@ -2243,21 +2243,6 @@ tpp_netaddr(tpp_addr_t *ap)
 	sprintf(port, ":%d", ntohs(ap->port));
 	strcat(ptr->tppstaticbuf, port);
 
-	/* if log mask is high, then reverse lookup the ip address
-	 * to print hostname along with ip
-	 */
-	if (tpp_log_event_mask >= (PBSEVENT_DEBUG4 - 1)) {
-		char host[256];
-
-		if (tpp_sock_resolve_ip(ap, host, sizeof(host)) == 0) {
-			char *tmp_buf;
-
-			pbs_asprintf(&tmp_buf, "(%s)%s", host, ptr->tppstaticbuf);
-			strcpy(ptr->tppstaticbuf, tmp_buf);
-			free(tmp_buf);
-		}
-	}
-
 	return ptr->tppstaticbuf;
 }
 
