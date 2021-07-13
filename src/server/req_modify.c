@@ -965,9 +965,34 @@ req_modifyReservation(struct batch_request *preq)
 	resource *presc = NULL;
 	int scheds_notified = 0;
 	int force_alter = FALSE;
+	char hook_msg[HOOK_MSG_SIZE] = {0};
 
 	if (preq == NULL)
 		return;
+
+	switch (process_hooks(preq, hook_msg, sizeof(hook_msg),
+			pbs_python_set_interrupt)) {
+		case 0:	/* explicit reject */
+			reply_text(preq, PBSE_HOOKERROR, hook_msg);
+			return;
+		case 1:   /* explicit accept */
+			if (recreate_request(preq) == -1) { /* error */
+				/* we have to reject the request, as 'preq' */
+				/* may have been partly modified            */
+				strcpy(hook_msg,
+					"modifyresv event: rejected request");
+				log_event(PBSEVENT_ERROR, PBS_EVENTCLASS_HOOK,
+					LOG_ERR, "", hook_msg);
+				reply_text(preq, PBSE_HOOKERROR, hook_msg);
+				return;
+			}
+			break;
+		case 2:	/* no hook script executed - go ahead and accept event*/
+			break;
+		default:
+			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_HOOK,
+				LOG_INFO, "", "modifyresv event: accept req by default");
+	}
 
 	sock = preq->rq_conn;
 

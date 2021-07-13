@@ -882,12 +882,15 @@ main(int argc, char **argv)
 	CLEAR_HEAD(svr_queuejob_hooks);
 	CLEAR_HEAD(svr_modifyjob_hooks);
 	CLEAR_HEAD(svr_resvsub_hooks);
+	CLEAR_HEAD(svr_modifyresv_hooks);
 	CLEAR_HEAD(svr_movejob_hooks);
 	CLEAR_HEAD(svr_runjob_hooks);
 	CLEAR_HEAD(svr_management_hooks);
 	CLEAR_HEAD(svr_modifyvnode_hooks);
 	CLEAR_HEAD(svr_periodic_hooks);
 	CLEAR_HEAD(svr_provision_hooks);
+	CLEAR_HEAD(svr_resv_confirm_hooks);
+	CLEAR_HEAD(svr_resv_begin_hooks);
 	CLEAR_HEAD(svr_resv_end_hooks);
 	CLEAR_HEAD(svr_execjob_begin_hooks);
 	CLEAR_HEAD(svr_execjob_prologue_hooks);

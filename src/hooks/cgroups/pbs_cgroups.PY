@@ -902,6 +902,11 @@ class HookUtils(object):
                 'name': 'resvsub',
                 'handler': None
             }
+            if hasattr(pbs, "MODIFYRESV"):
+                self.hook_events[pbs.MODIFYRESV] = {
+                    'name': 'modifyresv',
+                    'handler': None
+                }
             self.hook_events[pbs.MOVEJOB] = {
                 'name': 'movejob',
                 'handler': None
@@ -924,6 +929,21 @@ class HookUtils(object):
                 'name': 'provision',
                 'handler': None
             }
+            if hasattr(pbs, "RESV_END"):
+                self.hook_events[pbs.RESV_END] = {
+                'name': 'resv_end',
+                'handler': None
+                }
+            if hasattr(pbs, "RESV_BEGIN"):
+                self.hook_events[pbs.RESV_BEGIN] = {
+                'name': 'resv_begin',
+                'handler': None
+                }
+            if hasattr(pbs, "RESV_CONFIRM"):
+                self.hook_events[pbs.RESV_CONFIRM] = {
+                'name': 'resv_confirm',
+                'handler': None
+                }
             self.hook_events[pbs.EXECJOB_BEGIN] = {
                 'name': 'execjob_begin',
                 'handler': self._execjob_begin_handler

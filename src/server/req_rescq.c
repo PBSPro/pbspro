@@ -956,6 +956,16 @@ req_confirmresv(struct batch_request *preq)
 				presv->ri_qs.ri_stime, presv->ri_qs.ri_etime,
 				next_execvnode);
 		}
+		char hook_msg[HOOK_MSG_SIZE] = {0};
+		switch (process_hooks(preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt)) {
+			case 0: /* explicit reject */
+			case 1: /* no recreate request as there are only read permissions */
+			case 2: /* no hook script executed - go ahead and accept event*/
+				break;
+			default:
+				log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_HOOK, LOG_INFO, __func__,
+					"resv_confirm event: accept req by default");
+		}
 		account_recordResv(PBS_ACCT_CR, presv, tmp_buf);
 		if (tmp_buf != buf) {
 			free(tmp_buf);

@@ -1537,6 +1537,7 @@ _pbs_v1.REVERSE_BRP_CHOICES = {}
 _pbs_v1.REVERSE_BATCH_OPS = {}
 _pbs_v1.REVERSE_ATR_VFLAGS = {}
 _pbs_v1.REVERSE_NODE_STATE = {}
+_pbs_v1.REVERSE_RESV_STATE = {}
     
 for key, value in _pbs_v1.__dict__.items():
     if key.startswith("MGR_CMD_"):
@@ -1551,3 +1552,5 @@ for key, value in _pbs_v1.__dict__.items():
         _pbs_v1.REVERSE_ATR_VFLAGS[value] = key
     elif key.startswith("ND_STATE_"):
         _pbs_v1.REVERSE_NODE_STATE[value] = key
+    elif key.startswith("RESV_STATE"):
+        _pbs_v1.REVERSE_RESV_STATE[value] = key

@@ -5073,6 +5073,7 @@ _pbs_python_event_set(unsigned int hook_event, char *req_user, char *req_host,
 	PyObject *py_job_o = NULL;
 	PyObject *py_que = NULL;
 	PyObject *py_resv = NULL;
+	PyObject *py_resv_o = NULL;
 	PyObject *py_margs = NULL;
 	PyObject *py_management = NULL;
 	PyObject *py_event_param = NULL;
@@ -5401,6 +5402,119 @@ _pbs_python_event_set(unsigned int hook_event, char *req_user, char *req_host,
 				PY_TYPE_EVENT, PY_EVENT_PARAM_RESV);
 			goto event_set_exit;
 		}
+	} else if (hook_event == HOOK_EVENT_MODIFYRESV){
+		struct rq_manage *rqr = req_params->rq_manage;
+
+		/* initialize event params to None */
+		(void)PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_JOB,
+			Py_None);
+		(void)PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_JOB_O,
+			Py_None);
+		/*
+		 * First things first create a Python job object.
+		 *  - Borrowed reference
+		 *  - Exception is *NOT* set
+		 */
+		py_resv_class = pbs_python_types_table[PP_RESV_IDX].t_class;
+
+		py_rargs = Py_BuildValue("(s)", rqr->rq_objname); /* NEW ref */
+
+		if (!py_rargs) {
+			log_err(PBSE_INTERNAL, __func__, "could not build args list for reservation");
+			goto event_set_exit;
+		}
+
+		py_resv = PyObject_Call(py_resv_class, py_rargs, NULL);/*NEW*/
+
+		if (!py_resv) {
+			log_err(PBSE_INTERNAL, __func__, "failed to create a python reservation object");
+			goto event_set_exit;
+		}
+
+		rc = PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_RESV, py_resv);
+
+		if (rc == -1) {
+			LOG_ERROR_ARG2("%s:failed to set param attribute <%s>",
+				PY_TYPE_EVENT, PY_EVENT_PARAM_RESV);
+			goto event_set_exit;
+		}
+
+		snprintf(perf_action, sizeof(perf_action), "%s:%s(%s)", HOOK_PERF_POPULATE, EVENT_JOB_OBJECT, rqr->rq_objname);
+		rc = pbs_python_populate_python_class_from_svrattrl(py_resv,
+			&rqr->rq_attr, perf_label, perf_action);
+
+		if (rc == -1) {
+			LOG_ERROR_ARG2("%s: partially set remaining param['%s'] attributes",
+				PY_TYPE_EVENT, PY_EVENT_PARAM_RESV);
+			goto event_set_exit;
+		}
+
+		if (IS_PBS_PYTHON_CMD(pbs_python_daemon_name)) {
+			if (py_pbs_statobj != NULL) {
+				Py_XDECREF(py_rargs);  /* discard previously used value   */
+				/* NOTE: *XDECREF() is safe where  */
+				/* if py_jargs is NULL, then */
+				/* nothing is released. */
+				/* Current value of py_jargs is */
+				/* released at the end of this  */
+				/* function (at event_set_exit:) */
+				py_rargs = Py_BuildValue("(sss)", "resv", rqr->rq_objname,
+					pbs_conf.pbs_server_name); /* NEW ref */
+				py_resv_o = PyObject_Call(py_pbs_statobj, py_rargs,
+					NULL);/*NEW*/
+				hook_set_mode = C_MODE; /* ensure still in C mode */
+			}
+		} else {
+			/* we own this reference */
+			py_resv_o = _pps_helper_get_resv(NULL, rqr->rq_objname, perf_label);
+		}
+
+		if (!py_resv_o || (py_resv_o == Py_None)) {
+			LOG_ERROR_ARG2("%s:failed to create original reservation %s's python resv object",
+				PY_TYPE_EVENT, rqr->rq_objname);
+			rc = -1;
+			goto event_set_exit;
+		}
+		/* handed off to py_event_parm...reference count incremented again */
+		rc = PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_RESV_O,
+			py_resv_o);
+
+		if (rc == -1) {
+			LOG_ERROR_ARG2("%s:failed to set param attribute <%s>",
+				PY_TYPE_EVENT, PY_EVENT_PARAM_RESV_O);
+			goto event_set_exit;
+		}
+		/* Need to send a Variable_List of the original reservation, so that */
+		/* in a hook script, we'll only allow to modify or add to existing */
+		/* Variable_List */
+		py_varlist_o = PyObject_GetAttrString(py_resv_o, ATTR_v); /* NEW */
+		if ((py_varlist_o == NULL) || (py_varlist_o == Py_None)) {
+
+			py_varlist = PyDict_New(); /* NEW - empty dict */
+		} else {
+			/* important to have a copy, so that changes in py_job's */
+			/* Variable_List does not reflect in py_job_o's.	 */
+			py_varlist = PyDict_Copy(py_varlist_o); /* NEW */
+		}
+
+		if (py_varlist == NULL) {
+			log_err(PBSE_INTERNAL, __func__,
+				"failed to create a Variable_List dictionary!");
+			rc = -1;
+			goto event_set_exit;
+		}
+
+		/* upon success, py_resv adds a reference count to py_varlist */
+		if (PyObject_SetAttrString(py_resv, ATTR_v, py_varlist) == -1) {
+			snprintf(log_buffer, LOG_BUF_SIZE-1,
+				"failed to set dictionary for %s", ATTR_v);
+			log_buffer[LOG_BUF_SIZE-1] = '\0';
+			log_err(PBSE_INTERNAL, __func__, log_buffer);
+			rc = -1;
+			goto event_set_exit;
+		}
+		/* end of Variable_List setting */
+
 	} else if (hook_event == HOOK_EVENT_MODIFYJOB) {
 		struct rq_manage *rqj = req_params->rq_manage;
 
@@ -5862,7 +5976,8 @@ _pbs_python_event_set(unsigned int hook_event, char *req_user, char *req_host,
 				PY_TYPE_EVENT, PY_EVENT_PARAM_VNODE);
 			goto event_set_exit;
 		}
-	} else if (hook_event == HOOK_EVENT_RESV_END) {
+	} else if ( (hook_event == HOOK_EVENT_RESV_END) || \
+		(hook_event == HOOK_EVENT_RESV_BEGIN) ) {
 		struct rq_manage *rqj = req_params->rq_manage;
 
 		/* initialize event param to None */
@@ -5891,7 +6006,36 @@ _pbs_python_event_set(unsigned int hook_event, char *req_user, char *req_host,
 			LOG_ERROR_ARG2("%s:failed to set param attribute <%s>", PY_TYPE_EVENT, PY_EVENT_PARAM_JOB);
   		    	goto event_set_exit;
    		}
+	} else if (hook_event == HOOK_EVENT_RESV_CONFIRM) {
+		/* Confirm uses rq_runjob, not rq_manage and sticks the reservation id in rq_jid */
+		struct rq_runjob *rqj = req_params->rq_run;
 
+		/* initialize event param to None */
+		(void)PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_RESV, Py_None);
+
+		if (IS_PBS_PYTHON_CMD(pbs_python_daemon_name)) {
+			if (py_pbs_statobj != NULL) {
+				Py_XDECREF(py_rargs);  /* discard previously used value */
+				py_rargs = Py_BuildValue("(sss)", "resv", rqj->rq_jid,
+					pbs_conf.pbs_server_name); /* NEW ref */
+				py_resv = PyObject_Call(py_pbs_statobj, py_rargs,
+					NULL);/*NEW Reservation object*/
+				hook_set_mode = C_MODE; /* ensure still in C mode */
+			}
+		} else {
+			py_resv = _pps_helper_get_resv(NULL, rqj->rq_jid, perf_label);
+		}
+
+		if (!py_resv || (py_resv == Py_None)) {
+         		LOG_ERROR_ARG2("%s:failed to create resv %s's python resv object", PY_TYPE_EVENT, rqj->rq_jid);
+			goto event_set_exit;
+		}
+		rc = PyDict_SetItemString(py_event_param, PY_EVENT_PARAM_RESV, py_resv);
+
+  	        if (rc == -1) {
+			LOG_ERROR_ARG2("%s:failed to set param attribute <%s>", PY_TYPE_EVENT, PY_EVENT_PARAM_JOB);
+  		    	goto event_set_exit;
+   		}
 	} else if( (hook_event == HOOK_EVENT_EXECJOB_BEGIN) || \
 		(hook_event == HOOK_EVENT_EXECJOB_RESIZE) || \
 		(hook_event == HOOK_EVENT_EXECJOB_PROLOGUE) || \
@@ -6499,6 +6643,7 @@ _pbs_python_event_to_request(unsigned int hook_event, hook_output_param_t *req_p
 	PyObject 		*py_resvlist = NULL;
 	PyObject 		*py_job_o = NULL;
 	PyObject 		*py_resv = NULL;
+	PyObject 		*py_resv_o = NULL;
 	char			*queue;
 	PyObject		*py_varlist = NULL;
 	PyObject		*py_varlist_o = NULL;
@@ -6771,6 +6916,48 @@ _pbs_python_event_to_request(unsigned int hook_event, hook_output_param_t *req_p
 
 			print_svrattrl_list("pbs_populate_svrattrl_from_python_class==>", &((struct rq_queuejob *)(req_params->rq_job))->rq_attr);
 			break;
+		case HOOK_EVENT_MODIFYRESV:
+
+			py_resv = _pbs_python_event_get_param(PY_EVENT_PARAM_RESV);
+			if (!py_resv) {
+				log_err(PBSE_INTERNAL, __func__,
+					"No resv parameter found for event!");
+				goto event_to_request_exit;
+			}
+
+			py_resv_o = _pbs_python_event_get_param(PY_EVENT_PARAM_RESV_O);
+			if (!py_resv_o) {
+				log_err(PBSE_INTERNAL, __func__,
+					"No resv_o parameter found for event!");
+				goto event_to_request_exit;
+			}
+
+			/* Need to check if ATTR_v (i.e. Variable_list) changed, and if */
+			/* so, needs to be sent with the MODIFYRESV request.	            */
+
+			if (PyObject_HasAttrString(py_resv, ATTR_v))
+				py_varlist = PyObject_GetAttrString(py_resv, ATTR_v); /* NEW */
+
+			if (PyObject_HasAttrString(py_resv_o, ATTR_v))
+				py_varlist_o = PyObject_GetAttrString(py_resv_o, ATTR_v);
+			/* NEW */
+
+			if ((py_varlist != NULL) && (py_varlist_o != NULL) &&
+				(PyObject_RichCompareBool(py_varlist, py_varlist_o, Py_EQ))) {
+				/* upon success, py_resv decreases ref count to py_varlist */
+				(void)PyObject_SetAttrString(py_resv, ATTR_v, Py_None);
+			}
+
+			Py_CLEAR(py_varlist);
+			Py_CLEAR(py_varlist_o);
+
+			if (pbs_python_populate_svrattrl_from_python_class(py_resv,
+				&((struct rq_manage *)(req_params->rq_manage))->rq_attr, NULL, 0) == -1) {
+				goto event_to_request_exit;
+			}
+			print_svrattrl_list("pbs_populate_svrattrl_from_python_class==>", &((struct rq_manage *)(req_params->rq_manage))->rq_attr);
+			break;
+
 		case HOOK_EVENT_MODIFYJOB:
 
 			py_job = _pbs_python_event_get_param(PY_EVENT_PARAM_JOB);
@@ -7842,6 +8029,7 @@ pbsv1mod_meth_is_attrib_val_settable(PyObject *self, PyObject *args, PyObject *k
 
 			break;
 		case HOOK_EVENT_RESVSUB:
+		case HOOK_EVENT_MODIFYRESV:
 			if (!PyObject_IsInstance(py_owner,
 				pbs_python_types_table[PP_RESV_IDX].t_class) &&
 				!PyObject_IsInstance(py_owner,

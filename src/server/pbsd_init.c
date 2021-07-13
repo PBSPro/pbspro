@@ -829,12 +829,15 @@ pbsd_init(int type)
 	print_hooks(HOOK_EVENT_QUEUEJOB);
 	print_hooks(HOOK_EVENT_MODIFYJOB);
 	print_hooks(HOOK_EVENT_RESVSUB);
+	print_hooks(HOOK_EVENT_MODIFYRESV);
 	print_hooks(HOOK_EVENT_MOVEJOB);
 	print_hooks(HOOK_EVENT_RUNJOB);
 	print_hooks(HOOK_EVENT_MANAGEMENT);
 	print_hooks(HOOK_EVENT_MODIFYVNODE);
 	print_hooks(HOOK_EVENT_PROVISION);
 	print_hooks(HOOK_EVENT_PERIODIC);
+	print_hooks(HOOK_EVENT_RESV_CONFIRM);
+	print_hooks(HOOK_EVENT_RESV_BEGIN);
 	print_hooks(HOOK_EVENT_RESV_END);
 
 	/*

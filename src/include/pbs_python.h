@@ -281,6 +281,7 @@ extern int get_py_progname(char **);
 #define PY_EVENT_PARAM_JOB	"job"
 #define PY_EVENT_PARAM_JOB_O	"job_o"
 #define PY_EVENT_PARAM_RESV	"resv"
+#define PY_EVENT_PARAM_RESV_O "resv_o"
 #define PY_EVENT_PARAM_SRC_QUEUE "src_queue"
 #define PY_EVENT_PARAM_VNODE     "vnode"
 #define PY_EVENT_PARAM_VNODE_O    "vnode_o"

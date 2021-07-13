@@ -285,6 +285,7 @@ struct batch_reply
 #define PBS_BATCH_SubmitResv		70
 #define PBS_BATCH_StatusResv		71
 #define PBS_BATCH_DeleteResv		72
+#define PBS_BATCH_BeginResv		76
 #define PBS_BATCH_UserCred		73
 /* Unused -- #define PBS_BATCH_UserMigrate		74 */
 #define PBS_BATCH_ConfirmResv		75

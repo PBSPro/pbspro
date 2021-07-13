@@ -2571,6 +2571,27 @@ Time4resv(struct work_task *ptask)
 		if (presv->ri_qs.ri_tactive == time_now){
 			svr_mailownerResv(presv, MAIL_BEGIN, MAIL_NORMAL, "");
 			account_resvstart(presv);
+
+			/* make an artifical request so we can fire process hooks */
+			struct batch_request *preq = alloc_br(PBS_BATCH_BeginResv);
+			preq->rq_perm |= ATR_DFLAG_MGWR;
+			strncpy(preq->rq_user, pbs_current_user, PBS_MAXUSER);
+			strncpy(preq->rq_host, server_host, PBS_MAXHOSTNAME);
+			strncpy(preq->rq_ind.rq_manager.rq_objname, presv->ri_qs.ri_resvID, PBS_MAXSVRRESVID);
+			/* handle truncation warning */
+			preq->rq_ind.rq_manager.rq_objname[PBS_MAXSVRJOBID] = '\0';
+
+			char hook_msg[HOOK_MSG_SIZE] = {0};
+			switch (process_hooks(preq, hook_msg, sizeof(hook_msg), pbs_python_set_interrupt)) {
+				case 0: /* explicit reject */
+				case 1: /* no recreate request as there are only read permissions */
+				case 2: /* no hook script executed - go ahead and accept event*/
+					break;
+				default:
+					log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_HOOK, LOG_INFO, __func__,
+						"resv_begin event: accept req by default");
+			}
+			free_br(preq);
 		}
 
 		presv->resv_start_task = NULL;
