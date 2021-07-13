@@ -189,6 +189,11 @@ exit 1
         """
         Test that when checkpoint fails, a job is correctly requeued
         """
+        # no checkpoint script, should requeue
+        self.submit_and_preempt_jobs(preempt_order='CR')
+        self.server.cleanup_jobs()
+
+        # checkpoint script fails, should requeue
         self.mom.add_checkpoint_abort_script(body=self.chk_script_fail)
         self.submit_and_preempt_jobs(preempt_order='CR')
 

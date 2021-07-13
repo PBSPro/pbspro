@@ -471,22 +471,22 @@ post_hold(struct work_task *pwt)
 		conn->cn_authen &= ~PBS_NET_CONN_NOTIMEOUT;
 	}
 
-	if (code != 0) {
+	if (code != PBSE_NONE) {
 		/* Checkpoint failed, remove checkpoint flags from job */
 		pjob->ji_qs.ji_svrflags &= ~(JOB_SVFLG_HASHOLD | JOB_SVFLG_CHKPT);
+		if (pjob->ji_pmt_preq != NULL)
+			reply_preempt_jobs_request(code, PREEMPT_METHOD_CHECKPOINT, pjob);
+
 		if (code != PBSE_NOSUP) {
 			/* a "real" error - log message with return error code */
 			(void)sprintf(log_buffer, msg_mombadhold, code);
 			log_event(PBSEVENT_DEBUG, PBS_EVENTCLASS_JOB, LOG_DEBUG,
 				pjob->ji_qs.ji_jobid, log_buffer);
 			/* send message back to server for display to user */
-			if (pjob->ji_pmt_preq != NULL)
-				reply_preempt_jobs_request(code, PREEMPT_METHOD_CHECKPOINT, pjob);
 			reply_text(preq, code, log_buffer);
 			return;
 		}
-	} else if (code == 0) {
-
+	} else {
 		/* record that MOM has a checkpoint file */
 		set_job_substate(pjob, JOB_SUBSTATE_RERUN);
 		if (preq->rq_reply.brp_auxcode)	/* chkpt can be moved */
@@ -499,9 +499,9 @@ post_hold(struct work_task *pwt)
 		/* note in accounting file */
 
 		account_record(PBS_ACCT_CHKPNT, pjob, NULL);
+		if (pjob->ji_pmt_preq != NULL)
+			reply_preempt_jobs_request(PBSE_NONE, PREEMPT_METHOD_CHECKPOINT, pjob);
 	}
-	if (pjob->ji_pmt_preq != NULL)
-		reply_preempt_jobs_request(PBSE_NONE, PREEMPT_METHOD_CHECKPOINT, pjob);
 
 	reply_ack(preq);
 }
