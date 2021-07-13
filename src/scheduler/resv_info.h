@@ -124,4 +124,7 @@ int send_confirmresv(int virtual_sd, resource_resv *resv, const char *location, 
 /* wrapper for pbs_statresv */
 struct batch_status *send_statresv(int virtual_fd, char *id, struct attrl *attrib, char *extend);
 
+/* Update jobs and nodes for resv */
+void modify_jobs_nodes_for_resv(resource_resv *resresv, time_t server_time);
+
 #endif /* _RESV_INFO_H */

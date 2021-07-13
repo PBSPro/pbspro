@@ -46,7 +46,7 @@
 /*
  *	query_job - takes info from a batch_status about a job and puts
  */
-resource_resv *query_job(struct batch_status *job, server_info *sinfo, schd_error *err);
+resource_resv *query_job(int pbs_sd, struct batch_status *job, server_info *sinfo, queue_info *qinfo, schd_error *err);
 
 /*
  * pthread routine for querying a chunk of jobs
@@ -393,5 +393,8 @@ void associate_dependent_jobs(server_info *sinfo);
 
 /* This function associated the job passed in to its parent job */
 int associate_array_parent(resource_resv *pjob, server_info *sinfo);
+
+/* Set start, end, duration, and possibly STF parts of the job */
+void set_job_times(int pbs_sd, resource_resv *reseresv, time_t server_time);
 
 #endif	/* _JOB_INFO_H */

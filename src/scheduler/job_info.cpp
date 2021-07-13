@@ -522,7 +522,6 @@ query_jobs_chunk(th_data_query_jinfo *data)
 	int jidx;
 	struct batch_status *cur_job;
 	schd_error *err;
-	time_t server_time;
 	int pbs_sd;
 	status *policy;
 
@@ -550,21 +549,14 @@ query_jobs_chunk(th_data_query_jinfo *data)
 	}
 	resresv_arr[0] = NULL;
 
-	server_time = sinfo->server_time;
-
 	/* Move to the linked list item corresponding to the 'start' index */
 	for (cur_job = jobs, i = 0; i < sidx && cur_job != NULL; cur_job = cur_job->next, i++)
 		;
 
 	for (i = sidx, jidx = 0; i <= eidx && cur_job != NULL; cur_job = cur_job->next, i++) {
-		std::string selectspec;
 		resource_resv *resresv;
-		resource_req *req;
-		resource_req *walltime_req = NULL;
-		resource_req *soft_walltime_req = NULL;
-		long duration;
 
-		if ((resresv = query_job(cur_job, sinfo, err)) == NULL) {
+		if ((resresv = query_job(pbs_sd, cur_job, sinfo, qinfo, err)) == NULL) {
 			data->error = 1;
 			free_schd_error(err);
 			free_resource_resv_array(resresv_arr);
@@ -595,196 +587,6 @@ query_jobs_chunk(th_data_query_jinfo *data)
 			continue;
 		}
 
-		resresv->job->queue = qinfo;
-#ifdef NAS /* localmod 040 */
-		/* we modify nodect to be the same value for all jobs in queues that are
-		 * configured to ignore nodect key sorting, for two reasons:
-		 * 1. obviously to accomplish ignoring of nodect key sorting
-		 * 2. maintain stability of qsort when comparing with a job in a queue that
-		 *    does not require nodect key sorting
-		 * note that this assumes nodect is used only for sorting
-		 */
-		if (qinfo->ignore_nodect_sort)
-			resresv->job->nodect = 999999;
-#endif /* localmod 040 */
-
-		if ((resresv->aoename = getaoename(resresv->select)) != NULL)
-			resresv->is_prov_needed = 1;
-		if ((resresv->eoename = geteoename(resresv->select)) != NULL) {
-			/* job with a power profile can't be checkpointed or suspended */
-			resresv->job->can_checkpoint = 0;
-			resresv->job->can_suspend = 0;
-		}
-
-		if (resresv->select != NULL && resresv->select->chunks != NULL) {
-			/*
-			 * Job is invalid if there are no resources in a chunk.  Usually
-			 * happens because we strip out resources not in conf.res_to_check
-			 */
-			int k;
-			for (k = 0; resresv->select->chunks[k] != NULL; k++)
-				if (resresv->select->chunks[k]->req == NULL) {
-					set_schd_error_codes(err, NEVER_RUN, INVALID_RESRESV);
-					set_schd_error_arg(err, ARG1, "invalid chunk in select");
-					break;
-				}
-		}
-		if (resresv->place_spec->scatter &&
-			resresv->select->total_chunks >1)
-			resresv->will_use_multinode = 1;
-
-		if (resresv->job->is_queued && resresv->nspec_arr != NULL)
-			resresv->job->is_checkpointed = 1;
-
-		/* If we did not wait for mom to start the job (throughput mode),
-		 * it is possible that we’re seeing a running job without a start time set.
-		 * The stime is set when the mom reports back to the server to say the job is running.
-		 */
-		if ((resresv->job->is_running) && (resresv->job->stime == UNSPECIFIED))
-			resresv->job->stime = server_time + 1;
-
-		/* For jobs that have an exec_vnode, we create a "select" based
-		 * on its exec_vnode.  We do this so if we ever need to run the job
-		 * again, we will replace the job on the exact vnodes/resources it originally used.
-		 */
-		if (resresv->job->is_suspended && resresv->job->resreleased != NULL)
-			/* For jobs that are suspended and have resource_released, the "select"
-			* we create is based off of resources_released instead of the exec_vnode.
-			*/
-			selectspec = create_select_from_nspec(resresv->job->resreleased);
-		else if (resresv->nspec_arr != NULL)
-			selectspec = create_select_from_nspec(resresv->nspec_arr);
-
-		if (resresv->nspec_arr != NULL)
-			resresv->execselect = parse_selspec(selectspec);
-
-		/* Find out if it is a shrink-to-fit job.
-		 * If yes, set the duration to max walltime.
-		 */
-		req = find_resource_req(resresv->resreq, allres["min_walltime"]);
-		if (req != NULL) {
-			resresv->is_shrink_to_fit = 1;
-			/* Set the min duration */
-			resresv->min_duration = (time_t) req->amount;
-			req = find_resource_req(resresv->resreq, allres["max_walltime"]);
-
-#ifdef NAS /* localmod 026 */
-			/* if no max_walltime is set then we want to look at what walltime
-			 * is (if it's set at all) - it may be user-specified, queue default,
-			 * queue max, or server max.
-			 */
-			if (req == NULL) {
-				req = find_resource_req(resresv->resreq, allres["walltime"]);
-
-				/* if walltime is set, use it if it's greater than min_walltime */
-				if (req != NULL && resresv->min_duration > req->amount) {
-					req = find_resource_req(resresv->resreq, allres["min_walltime"]);
-				}
-			}
-#endif /* localmod 026 */
-		}
-
-		if ((req == NULL) || (resresv->job->is_running == 1)) {
-			soft_walltime_req = find_resource_req(resresv->resreq, allres["soft_walltime"]);
-			walltime_req = find_resource_req(resresv->resreq, allres["walltime"]);
-			if (soft_walltime_req != NULL)
-				req = soft_walltime_req;
-			else
-				req = walltime_req;
-		}
-
-		if (req != NULL)
-			duration = (long)req->amount;
-		else /* set to virtual job infinity: 5 years */
-			duration = JOB_INFINITY;
-
-		if (walltime_req != NULL)
-			resresv->hard_duration = (long)walltime_req->amount;
-		else if (resresv->min_duration != UNSPECIFIED)
-			resresv->hard_duration = resresv->min_duration;
-		else
-			resresv->hard_duration = JOB_INFINITY;
-
-		if (resresv->job->stime != UNSPECIFIED &&
-			!(resresv->job->is_queued || resresv->job->is_suspended) &&
-			resresv->ninfo_arr != NULL) {
-			auto start = resresv->job->stime;
-			time_t end;
-
-			/* if a job is exiting, then its end time can be more closely
-			 * estimated by setting it to now + EXITING_TIME
-			 */
-			if (resresv->job->is_exiting)
-				end = server_time + EXITING_TIME;
-			/* Normal Case: Job's end is start + duration and it ends in the future */
-			else if (start + duration >= server_time)
-				end = start + duration;
-			/* Duration has been exceeded - either extend soft_walltime or expect the job to be killed */
-			else {
-				if (soft_walltime_req != NULL) {
-					duration = extend_soft_walltime(resresv, server_time);
-					if (duration > soft_walltime_req->amount) {
-						char timebuf[128];
-						convert_duration_to_str(duration, timebuf, 128);
-						update_job_attr(pbs_sd, resresv, ATTR_estimated, "soft_walltime", timebuf, NULL, UPDATE_NOW);
-					}
-				} else
-					/* Job has exceeded its walltime.  It'll soon be killed and be put into the exiting state.
-					 * Change the duration of the job to match the current situation and assume it will end in
-					 * now + EXITING_TIME
-					 */
-					duration =  server_time - start + EXITING_TIME;
-				end = start + duration;
-			}
-			resresv->start = start;
-			resresv->end = end;
-		}
-		resresv->duration = duration;
-
-		if (qinfo->is_peer_queue) {
-			resresv->is_peer_ob = 1;
-			resresv->job->peer_sd = pbs_sd;
-		}
-
-		/* if the fairshare entity was not set by query_job(), then check
-		 * if it's 'queue' and if so, set the group info to the queue name
-		 */
-		if (conf.fairshare_ent == "queue") {
-			if (resresv->server->fstree != NULL) {
-				resresv->job->ginfo =
-					find_alloc_ginfo(qinfo->name.c_str(), resresv->server->fstree->root);
-			}
-			else
-				resresv->job->ginfo = NULL;
-		}
-
-		/* if fairshare_ent is invalid or the job doesn't have one, give a default
-		 * of something most likely unique - egroup:euser
-		 */
-
-		if (resresv->job->ginfo == NULL) {
-			char fairshare_name[100];
-#ifdef NAS /* localmod 058 */
-			sprintf(fairshare_name, "%s:%s:%s", resresv->group, resresv->user,
-				(qinfo->name != NULL ? qinfo->name : ""));
-#else
-			sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
-#endif /* localmod 058 */
-			if (resresv->server->fstree != NULL) {
-				resresv->job->ginfo = find_alloc_ginfo(fairshare_name, resresv->server->fstree->root);
-			}
-			else
-				resresv->job->ginfo = NULL;
-		}
-#ifdef NAS /* localmod 034 */
-		if (resresv->job->sh_info == NULL) {
-			sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
-			resresv->job->sh_info = site_find_alloc_share(resresv->server,
-								      fairshare_name);
-		}
-		site_set_share_type(resresv->server, resresv);
-#endif /* localmod 034 */
-
 		/* if the job's fairshare entity has no percentage of the machine,
 		 * the job can not run if enforce_no_shares is set
 		 */
@@ -795,21 +597,6 @@ query_jobs_chunk(th_data_query_jinfo *data)
 			}
 		}
 
-		/* add the resources_used and the resource_list together.  If the resource
-		 * request is not tracked via resources_used, it's most likely a static
-		 * resource like a license which is used for the duration of the job.
-		 * Since the first resource found in the list is returned in the find
-		 * function, if it's in both lists, the one in resources_used will be
-		 * returned first
-		 */
-		req = resresv->job->resused;
-
-		if (req != NULL) {
-			while (req->next != NULL)
-				req = req->next;
-
-			req->next = dup_resource_req_list(resresv->resreq);
-		}
 #ifdef NAS /* localmod 034 */
 		site_set_job_share(resresv);
 #endif /* localmod 034 */
@@ -1129,6 +916,7 @@ query_jobs(status *policy, int pbs_sd, queue_info *qinfo, resource_resv **pjobs,
  *		query_job - takes info from a batch_status about a job and
  *			 converts it into a resource_resv struct
  *
+ * 	  @param[in] pbs_sd - connection descriptor to the server
  *	  @param[in] job - batch_status struct of job
  *	  @param[in] qinfo - queue where job resides
  *	  @param[out] err - returns error info
@@ -1139,7 +927,7 @@ query_jobs(status *policy, int pbs_sd, queue_info *qinfo, resource_resv **pjobs,
  */
 
 resource_resv *
-query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
+query_job(int pbs_sd, struct batch_status *job, server_info *sinfo, queue_info *qinfo, schd_error *err)
 {
 	resource_resv *resresv;		/* converted job */
 	struct attrl *attrp;		/* list of attributes returned from server */
@@ -1160,12 +948,13 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 	attrp = job->attribs;
 
 	resresv->server = sinfo;
+	resresv->job->queue = qinfo;
 
-	resresv->is_job = 1;
+	resresv->is_job = true;
 
-	resresv->job->can_checkpoint = 1;	/* default can be checkpointed */
-	resresv->job->can_requeue = 1;		/* default can be requeued */
-	resresv->job->can_suspend = 1;		/* default can be suspended */
+	resresv->job->can_checkpoint = true;	/* default can be checkpointed */
+	resresv->job->can_requeue = true;		/* default can be requeued */
+	resresv->job->can_suspend = true;		/* default can be suspended */
 
 	while (attrp != NULL && !resresv->is_invalid) {
 		clear_schd_error(err);
@@ -1247,17 +1036,17 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 		}
 		else if (!strcmp(attrp->name, ATTR_substate)) {
 			if (!strcmp(attrp->value, SUSP_BY_SCHED_SUBSTATE))
-				resresv->job->is_susp_sched = 1;
+				resresv->job->is_susp_sched = true;
 			if (!strcmp(attrp->value, PROVISIONING_SUBSTATE))
-				resresv->job->is_provisioning = 1;
+				resresv->job->is_provisioning = true;
 			if (!strcmp(attrp->value, PRERUNNING_SUBSTATE))
-				resresv->job->is_prerunning = 1;
+				resresv->job->is_prerunning = true;
 		}
 		else if (!strcmp(attrp->name, ATTR_sched_preempted)) {
 			count = strtol(attrp->value, &endp, 10);
 			if (*endp == '\0') {
 				resresv->job->time_preempted = count;
-				resresv->job->is_preempted = 1;
+				resresv->job->is_preempted = true;
 			}
 		}
 		else if (!strcmp(attrp->name, ATTR_comment))	/* job comment */
@@ -1290,7 +1079,7 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 			resresv->node_set_str = break_comma_list(attrp->value);
 		else if (!strcmp(attrp->name, ATTR_array)) { /* array */
 			if (!strcmp(attrp->value, ATR_TRUE))
-				resresv->job->is_array = 1;
+				resresv->job->is_array = true;
 		}
 		else if (!strcmp(attrp->name, ATTR_array_index)) { /* array_index */
 			count = strtol(attrp->value, &endp, 10);
@@ -1299,11 +1088,11 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 			else
 				resresv->job->array_index = -1;
 
-			resresv->job->is_subjob = 1;
+			resresv->job->is_subjob = true;
 		}
 		else if (!strcmp(attrp->name, ATTR_topjob_ineligible)) {
 			if (!strcmp(attrp->value, ATR_TRUE))
-				resresv->job->topjob_ineligible = 1;
+				resresv->job->topjob_ineligible = true;
 		}
 		/* array_indices_remaining */
 		else if (!strcmp(attrp->name, ATTR_array_indices_remaining))
@@ -1331,7 +1120,8 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 			if (set_resource_req(resreq, attrp->value) != 1) {
 				set_schd_error_codes(err, NEVER_RUN, ERR_SPECIAL);
 				set_schd_error_arg(err, SPECMSG, "Bad requested resource data");
-				resresv->is_invalid = 1;
+				resresv->is_invalid = true;
+				return resresv;
 			} else {
 				if (resresv->resreq == NULL)
 					resresv->resreq = resreq;
@@ -1352,7 +1142,7 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 					if (resresv->place_spec == NULL) {
 						set_schd_error_codes(err, NEVER_RUN, ERR_SPECIAL);
 						set_schd_error_arg(err, SPECMSG, "invalid placement spec");
-						resresv->is_invalid = 1;
+						resresv->is_invalid = true;
 
 					}
 				}
@@ -1388,11 +1178,11 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 		}
 		else if (!strcmp(attrp->name, ATTR_c)) { /* checkpoint allowed? */
 			if (strcmp(attrp->value, "n") == 0)
-				resresv->job->can_checkpoint = 0;
+				resresv->job->can_checkpoint = false;
 		}
 		else if (!strcmp(attrp->name, ATTR_r)) { /* reque allowed ? */
 			if (strcmp(attrp->value, ATR_FALSE) == 0)
-				resresv->job->can_requeue = 0;
+				resresv->job->can_requeue = false;
 		}
 		else if (!strcmp(attrp->name, ATTR_depend)) {
 			resresv->job->depend_job_str = string_dup(attrp->value);
@@ -1400,6 +1190,131 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 
 		attrp = attrp->next;
 	}
+
+#ifdef NAS /* localmod 040 */
+	/* we modify nodect to be the same value for all jobs in queues that are
+	 * configured to ignore nodect key sorting, for two reasons:
+	 * 1. obviously to accomplish ignoring of nodect key sorting
+	 * 2. maintain stability of qsort when comparing with a job in a queue that
+	 *    does not require nodect key sorting
+	 * note that this assumes nodect is used only for sorting
+	 */
+	if (qinfo->ignore_nodect_sort)
+		resresv->job->nodect = 999999;
+#endif /* localmod 040 */
+
+	if (qinfo->is_peer_queue) {
+		resresv->is_peer_ob = 1;
+		resresv->job->peer_sd = pbs_sd;
+	}
+
+	if ((resresv->aoename = getaoename(resresv->select)) != NULL)
+		resresv->is_prov_needed = true;
+	if ((resresv->eoename = geteoename(resresv->select)) != NULL) {
+		/* job with a power profile can't be checkpointed or suspended */
+		resresv->job->can_checkpoint = false;
+		resresv->job->can_suspend = false;
+	}
+
+	if (resresv->select != NULL && resresv->select->chunks != NULL) {
+		/*
+		 * Job is invalid if there are no resources in a chunk.  Usually
+		 * happens because we strip out resources not in conf.res_to_check
+		 */
+		int k;
+		for (k = 0; resresv->select->chunks[k] != NULL; k++)
+			if (resresv->select->chunks[k]->req == NULL) {
+				set_schd_error_codes(err, NEVER_RUN, INVALID_RESRESV);
+				set_schd_error_arg(err, ARG1, "invalid chunk in select");
+				resresv->is_invalid = true;
+				return resresv;
+			}
+	}
+
+	if (resresv->place_spec->scatter &&
+	    resresv->select->total_chunks > 1)
+		resresv->will_use_multinode = true;
+
+	if (resresv->job->is_queued && resresv->nspec_arr != NULL)
+		resresv->job->is_checkpointed = true;
+
+	/* If we did not wait for mom to start the job (throughput mode),
+	 * it is possible that we’re seeing a running job without a start time set.
+	 * The stime is set when the mom reports back to the server to say the job is running.
+	 */
+	if ((resresv->job->is_running) && (resresv->job->stime == UNSPECIFIED))
+		resresv->job->stime = sinfo->server_time + 1;
+
+	/* For jobs that have an exec_vnode, we create a "select" based
+	 * on its exec_vnode.  We do this so if we ever need to run the job
+	 * again, we will replace the job on the exact vnodes/resources it originally used.
+	 */
+	std::string selectspec;
+	if (resresv->job->is_suspended && resresv->job->resreleased != NULL)
+		/* For jobs that are suspended and have resource_released, the "select"
+		 * we create is based off of resources_released instead of the exec_vnode.
+		 */
+		selectspec = create_select_from_nspec(resresv->job->resreleased);
+	else if (resresv->nspec_arr != NULL)
+		selectspec = create_select_from_nspec(resresv->nspec_arr);
+
+	if (!selectspec.empty())
+		resresv->execselect = parse_selspec(selectspec);
+
+	set_job_times(pbs_sd, resresv, sinfo->server_time);
+
+	/* Add Resource_List resources after resource_used on the job.  This is 
+	 * mainly for fairshare.  This allows us to use custom resources only found in 
+	 * Resource_List in our fairshare formula.  If a resource appears in both
+	 * lists, we'll find the one in resources_used first and use that.
+	 */
+	auto req = resresv->job->resused;
+
+	if (req != NULL) {
+		while (req->next != NULL)
+			req = req->next;
+
+		req->next = dup_resource_req_list(resresv->resreq);
+	}
+
+
+	/* if the fairshare entity was not set by query_job(), then check
+	 * if it's 'queue' and if so, set the group info to the queue name
+	 */
+	if (conf.fairshare_ent == "queue") {
+		if (sinfo->fstree != NULL) {
+			resresv->job->ginfo =
+				find_alloc_ginfo(qinfo->name.c_str(), sinfo->fstree->root);
+		} else
+			resresv->job->ginfo = NULL;
+	}
+
+	/* if fairshare_ent is invalid or the job doesn't have one, give a default
+	 * of something most likely unique - egroup:euser
+	 */
+
+	if (resresv->job->ginfo == NULL) {
+		char fairshare_name[100];
+#ifdef NAS /* localmod 058 */
+		sprintf(fairshare_name, "%s:%s:%s", resresv->group, resresv->user,
+			(qinfo->name != NULL ? qinfo->name : ""));
+#else
+		sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
+#endif /* localmod 058 */
+		if (resresv->server->fstree != NULL) {
+			resresv->job->ginfo = find_alloc_ginfo(fairshare_name, sinfo->fstree->root);
+		} else
+			resresv->job->ginfo = NULL;
+	}
+#ifdef NAS /* localmod 034 */
+	if (resresv->job->sh_info == NULL) {
+		sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
+		resresv->job->sh_info = site_find_alloc_share(sinfo,
+							      fairshare_name);
+	}
+	site_set_share_type(sinfo, resresv);
+#endif /* localmod 034 */
+
 	return resresv;
 }
 
@@ -5338,4 +5253,102 @@ int associate_array_parent(resource_resv *pjob, server_info *sinfo) {
 	parent->job->running_subjobs++;
 
 	return 0;
+}
+
+/**
+ *	@brief set job's start, end, duration, and STF attributes if needed
+ *
+ * 	@param[in] pbs_sd - used to set estimated.soft_walltime
+ * 	@param[in] resresv - the job
+ * 	@param[in] server_time - current time in cycle
+ * 
+ * 	@return void
+ */
+void set_job_times(int pbs_sd, resource_resv *resresv, time_t server_time)
+{
+	long duration;
+	resource_req *soft_walltime_req = NULL;
+	resource_req *walltime_req = NULL;
+	/* Find out if it is a shrink-to-fit job.
+	 * If yes, set the duration to max walltime.
+	 */
+	auto req = find_resource_req(resresv->resreq, allres["min_walltime"]);
+	if (req != NULL) {
+		resresv->is_shrink_to_fit = true;
+		/* Set the min duration */
+		resresv->min_duration = (time_t) req->amount;
+		req = find_resource_req(resresv->resreq, allres["max_walltime"]);
+
+#ifdef NAS /* localmod 026 */
+		/* if no max_walltime is set then we want to look at what walltime
+		 * is (if it's set at all) - it may be user-specified, queue default,
+		 * queue max, or server max.
+		 */
+		if (req == NULL) {
+			req = find_resource_req(resresv->resreq, allres["walltime"]);
+
+			/* if walltime is set, use it if it's greater than min_walltime */
+			if (req != NULL && resresv->min_duration > req->amount) {
+				req = find_resource_req(resresv->resreq, allres["min_walltime"]);
+			}
+		}
+#endif /* localmod 026 */
+	}
+
+	if ((req == NULL) || (resresv->job->is_running == true)) {
+		soft_walltime_req = find_resource_req(resresv->resreq, allres["soft_walltime"]);
+		walltime_req = find_resource_req(resresv->resreq, allres["walltime"]);
+		if (soft_walltime_req != NULL)
+			req = soft_walltime_req;
+		else
+			req = walltime_req;
+	}
+
+	if (req != NULL)
+		duration = (long) req->amount;
+	else /* set to virtual job infinity: 5 years */
+		duration = JOB_INFINITY;
+
+	if (walltime_req != NULL)
+		resresv->hard_duration = (long) walltime_req->amount;
+	else if (resresv->min_duration != UNSPECIFIED)
+		resresv->hard_duration = resresv->min_duration;
+	else
+		resresv->hard_duration = JOB_INFINITY;
+
+	if (resresv->job->stime != UNSPECIFIED &&
+	    !(resresv->job->is_queued || resresv->job->is_suspended) &&
+	    resresv->ninfo_arr != NULL) {
+		auto start = resresv->job->stime;
+		time_t end;
+
+		/* if a job is exiting, then its end time can be more closely
+			 * estimated by setting it to now + EXITING_TIME
+			 */
+		if (resresv->job->is_exiting)
+			end = server_time + EXITING_TIME;
+		/* Normal Case: Job's end is start + duration and it ends in the future */
+		else if (start + duration >= server_time)
+			end = start + duration;
+		/* Duration has been exceeded - either extend soft_walltime or expect the job to be killed */
+		else {
+			if (soft_walltime_req != NULL) {
+				duration = extend_soft_walltime(resresv, server_time);
+				if (duration > soft_walltime_req->amount) {
+					char timebuf[128];
+					convert_duration_to_str(duration, timebuf, 128);
+					update_job_attr(pbs_sd, resresv, ATTR_estimated, "soft_walltime", timebuf, NULL, UPDATE_NOW);
+				}
+			} else
+				/* Job has exceeded its walltime.  It'll soon be killed and be put into the exiting state.
+				 * Change the duration of the job to match the current situation and assume it will end in
+				 * now + EXITING_TIME
+				 */
+				duration = server_time - start + EXITING_TIME;
+			end = start + duration;
+		}
+		resresv->start = start;
+		resresv->end = end;
+	}
+	resresv->duration = duration;
 }

@@ -150,16 +150,7 @@ query_reservations(int pbs_sd, server_info *sinfo, struct batch_status *resvs)
 	/* the current resv */
 	resource_resv *resresv;
 
-	/* a convient ptr to make things more simple */
-	resource_resv *rjob;
-
-	/* used to calculate the resources assigned per node */
-	schd_resource *res;
-	resource_req *req;
-	nspec *ns;
-	node_info *resvnode;
 	int j;
-	int k;
 	int idx = 0; /* index of the server info's resource reservation array */
 	int num_resv = 0;
 
@@ -253,128 +244,8 @@ query_reservations(int pbs_sd, server_info *sinfo, struct batch_status *resvs)
 			continue;
 		}
 
-		resresv->rank = get_sched_rank();
+		modify_jobs_nodes_for_resv(resresv, sinfo->server_time);
 
-		resresv->aoename = getaoename(resresv->select);
-		resresv->eoename = geteoename(resresv->select);
-
-		/* reservations requesting AOE mark nodes as exclusive */
-		if (resresv->aoename) {
-			resresv->place_spec->share = 0;
-			resresv->place_spec->excl = 1;
-		}
-
-		/*
-		 * Check to see if we can attempt to confirm this reservation.
-		 * If we can, then then all we will do in this cycle is attempt
-		 * to confirm reservations.  In that case, build the calendar
-		 * using the hard durations of jobs.
-		 */
-		if (will_confirm(resresv, sinfo->server_time))
-			sinfo->use_hard_duration = 1;
-
-		resresv->duration = resresv->resv->req_duration;
-		resresv->hard_duration = resresv->duration;
-		if (resresv->resv->resv_state != RESV_UNCONFIRMED) {
-			resresv->start = resresv->resv->req_start;
-			if(resresv->resv->resv_state == RESV_BEING_DELETED ||
-			   resresv->start + resresv->duration <= sinfo->server_time) {
-				resresv->end = sinfo->server_time + EXITING_TIME;
-			} else
-				resresv->end = resresv->resv->req_end;
-		}
-
-		if (resresv->node_set_str != NULL) {
-			resresv->node_set = create_node_array_from_str(
-				resresv->server->unassoc_nodes, resresv->node_set_str);
-		}
-		resresv->resv->resv_queue =
-			find_queue_info(sinfo->queues, resresv->resv->queuename);
-		if (is_resresv_running(resresv)) {
-			for (j = 0; resresv->ninfo_arr[j] != NULL; j++)
-				resresv->ninfo_arr[j]->num_run_resv++;
-		}
-
-		if (resresv->resv->resv_queue != NULL) {
-			resresv->resv->resv_queue->resv = resresv;
-			if (resresv->resv->resv_queue->jobs != NULL) {
-				for (j = 0; resresv->resv->resv_queue->jobs[j] != NULL; j++) {
-					rjob = resresv->resv->resv_queue->jobs[j];
-					rjob->job->resv = resresv;
-					rjob->job->can_not_preempt = 1;
-					if (rjob->node_set_str != NULL)
-						rjob->node_set =
-							create_node_array_from_str(resresv->resv->resv_nodes,
-							rjob->node_set_str);
-
-					/* if a job will exceed the end time of a duration, it will be
-					 * killed by the server. We set the job's end time to the resv's
-					 * end time for better estimation.
-					 */
-					if (sinfo->server_time + rjob->duration > resresv->end) {
-						rjob->duration = resresv->end - sinfo->server_time;
-						rjob->hard_duration = rjob->duration;
-						if (rjob->end != UNSPECIFIED)
-							rjob->end = resresv->end;
-					}
-
-					if (rjob->job->is_running) {
-						/* the reservations resv_nodes is pointing to
-						 * a node_info array with just the reservations part of the node
-						 * i.e. the universe of the reservation
-						 */
-						for (k = 0; rjob->nspec_arr[k] != NULL; k++) {
-							ns = rjob->nspec_arr[k];
-							resvnode = find_node_info(resresv->resv->resv_nodes,
-								ns->ninfo->name);
-
-							if (resvnode != NULL) {
-								/* update the ninfo to point to the ninfo in our universe */
-								ns->ninfo = resvnode;
-								rjob->ninfo_arr[k] = resvnode;
-
-								/* update resource assigned amounts on the nodes in the
-								 * reservation's universe
-								 */
-								req = ns->resreq;
-								while (req != NULL) {
-									if (req->type.is_consumable) {
-										res = find_resource(ns->ninfo->res, req->def);
-										if (res != NULL)
-											res->assigned += req->amount;
-									}
-									req = req->next;
-								}
-							}
-							else {
-#ifdef NAS /* localmod 031 */
-								log_eventf(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
-									"Job has been assigned a node that doesn't exist in its reservation: %s", ns->ninfo->name);
-#else
-								log_event(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
-									"Job has been assigned a node which doesn't exist in its reservation");
-#endif /* localmod 031 */
-							}
-						}
-						if (rjob->ninfo_arr[k] != NULL) {
-							log_event(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
-								"Job's node array has different length than nspec_arr in query_reservations()");
-						}
-					}
-				}
-				auto jobs_in_reservations = resource_resv_filter(resresv->resv->resv_queue->jobs,
-									    count_array(resresv->resv->resv_queue->jobs),
-									    check_running_job_in_reservation, NULL, 0);
-				collect_jobs_on_nodes(resresv->resv->resv_nodes, jobs_in_reservations,
-					              count_array(jobs_in_reservations), NO_FLAGS);
-				free(jobs_in_reservations);
-
-				/* Sort the nodes to ensure correct job placement. */
-				qsort(resresv->resv->resv_nodes,
-					count_array(resresv->resv->resv_nodes),
-					sizeof(node_info *), multi_node_sort);
-			}
-		}
 		/* The server's info only gives information about a single reservation
 		 * object. In the case of a standing reservation, it is up to the
 		 * scheduler to account for each occurrence and attempt to confirm the
@@ -396,7 +267,7 @@ query_reservations(int pbs_sd, server_info *sinfo, struct batch_status *resvs)
 		 * confirmed.
 		 */
 		if (resresv->resv->is_standing &&
-			(resresv->resv->resv_state != RESV_UNCONFIRMED)) {
+		    (resresv->resv->resv_state != RESV_UNCONFIRMED)) {
 			resource_resv *resresv_ocr = NULL; /* the occurrence's resource_resv */
 			char *execvnodes_seq; /* confirmed execvnodes sequence string */
 			char **execvnode_ptr = NULL;
@@ -580,7 +451,9 @@ query_reservations(int pbs_sd, server_info *sinfo, struct batch_status *resvs)
 			free(execvnode_ptr);
 
 			continue;
-		} else {
+		}
+		else
+		{
 			resresv_arr[idx++] = resresv;
 			resresv_arr[idx] = NULL;
 		}
@@ -827,6 +700,48 @@ query_resv(struct batch_status *resv, server_info *sinfo)
 			advresv->resv->is_running = 1;
 	} else if (advresv->resv->req_start <= sinfo->server_time && advresv->resv->req_end >= sinfo->server_time)
 		advresv->resv->is_running = 1;
+
+	advresv->rank = get_sched_rank();
+
+	advresv->aoename = getaoename(advresv->select);
+	advresv->eoename = geteoename(advresv->select);
+
+	/* reservations requesting AOE mark nodes as exclusive */
+	if (advresv->aoename) {
+		advresv->place_spec->share = 0;
+		advresv->place_spec->excl = 1;
+	}
+
+	/*
+	 * Check to see if we can attempt to confirm this reservation.
+	 * If we can, then then all we will do in this cycle is attempt
+	 * to confirm reservations.  In that case, build the calendar
+	 * using the hard durations of jobs.
+	 */
+	if (will_confirm(advresv, sinfo->server_time))
+		sinfo->use_hard_duration = 1;
+
+	advresv->duration = advresv->resv->req_duration;
+	advresv->hard_duration = advresv->duration;
+	if (advresv->resv->resv_state != RESV_UNCONFIRMED) {
+		advresv->start = advresv->resv->req_start;
+		if (advresv->resv->resv_state == RESV_BEING_DELETED ||
+		    advresv->start + advresv->duration <= sinfo->server_time) {
+			advresv->end = sinfo->server_time + EXITING_TIME;
+		} else
+			advresv->end = advresv->resv->req_end;
+	}
+
+	if (advresv->node_set_str != NULL) {
+		advresv->node_set = create_node_array_from_str(
+			advresv->server->unassoc_nodes, advresv->node_set_str);
+	}
+	advresv->resv->resv_queue =
+		find_queue_info(sinfo->queues, advresv->resv->queuename);
+	if (is_resresv_running(advresv)) {
+		for (int j = 0; advresv->ninfo_arr[j] != NULL; j++)
+			advresv->ninfo_arr[j]->num_run_resv++;
+	}
 
 	return advresv;
 }
@@ -2170,4 +2085,92 @@ int will_confirm(resource_resv *resv, time_t server_time) {
 		return 1;
 
 	return 0;
+}
+
+/**
+ * @brief Update jobs and nodes for a reservation
+ * 
+ * @param[in] resresv - the reservation
+ * @param[in] server_time - time current time in the server
+ */
+void modify_jobs_nodes_for_resv(resource_resv *resresv, time_t server_time)
+{
+	if (resresv->resv == NULL || resresv->resv->resv_queue == NULL)
+		return;
+	
+	resresv->resv->resv_queue->resv = resresv;
+	if (resresv->resv->resv_queue->jobs != NULL) {
+		for (int j = 0; resresv->resv->resv_queue->jobs[j] != NULL; j++) {
+			auto rjob = resresv->resv->resv_queue->jobs[j];
+			rjob->job->resv = resresv;
+			rjob->job->can_not_preempt = 1;
+			if (rjob->node_set_str != NULL)
+				rjob->node_set =
+					create_node_array_from_str(resresv->resv->resv_nodes,
+								   rjob->node_set_str);
+
+			/* if a job will exceed the end time of a duration, it will be
+			 * killed by the server. We set the job's end time to the resv's
+			 * end time for better estimation.
+			 */
+			if (server_time + rjob->duration > resresv->end) {
+				rjob->duration = resresv->end - server_time;
+				rjob->hard_duration = rjob->duration;
+				if (rjob->end != UNSPECIFIED)
+					rjob->end = resresv->end;
+			}
+
+			if (rjob->job->is_running) {
+				/* the reservations resv_nodes is pointing to
+				 * a node_info array with just the reservations part of the node
+				 * i.e. the universe of the reservation
+				 */
+				int k = 0;
+				for (; rjob->nspec_arr[k] != NULL; k++) {
+					auto ns = rjob->nspec_arr[k];
+					auto resvnode = find_node_info(resresv->resv->resv_nodes, ns->ninfo->name);
+
+					if (resvnode != NULL) {
+						/* update the ninfo to point to the ninfo in our universe */
+						ns->ninfo = resvnode;
+						rjob->ninfo_arr[k] = resvnode;
+
+						/* update resource assigned amounts on the nodes in the
+						 * reservation's universe
+						 */
+						for (auto req = ns->resreq; req != NULL; req = req->next) {
+							if (req->type.is_consumable) {
+								auto res = find_resource(ns->ninfo->res, req->def);
+								if (res != NULL)
+									res->assigned += req->amount;
+							}
+						}
+					} else {
+#ifdef NAS /* localmod 031 */
+						log_eventf(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
+							   "Job has been assigned a node that doesn't exist in its reservation: %s", ns->ninfo->name);
+#else
+						log_event(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
+							  "Job has been assigned a node which doesn't exist in its reservation");
+#endif /* localmod 031 */
+					}
+				}
+				if (rjob->ninfo_arr[k] != NULL) {
+					log_event(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO, rjob->name,
+						  "Job's node array has different length than nspec_arr in query_reservations()");
+				}
+			}
+		}
+		auto jobs_in_reservations = resource_resv_filter(resresv->resv->resv_queue->jobs,
+								 count_array(resresv->resv->resv_queue->jobs),
+								 check_running_job_in_reservation, NULL, 0);
+		collect_jobs_on_nodes(resresv->resv->resv_nodes, jobs_in_reservations,
+				      count_array(jobs_in_reservations), NO_FLAGS);
+		free(jobs_in_reservations);
+
+		/* Sort the nodes to ensure correct job placement. */
+		qsort(resresv->resv->resv_nodes,
+		      count_array(resresv->resv->resv_nodes),
+		      sizeof(node_info *), multi_node_sort);
+	}
 }

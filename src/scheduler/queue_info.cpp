@@ -181,27 +181,6 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 		}
 
 		if (queue_in_partition(qinfo, sc_attrs.partition)) {
-			/* check if the queue is a dedicated time queue */
-			if (conf.ded_prefix[0] != '\0')
-				if (qinfo->name.compare(0, conf.ded_prefix.length(), conf.ded_prefix) == 0) {
-					qinfo->is_ded_queue = true;
-					sinfo->has_ded_queue = true;
-				}
-
-			/* check if the queue is a prime time queue */
-			if (conf.pt_prefix[0] != '\0')
-				if (qinfo->name.compare(0, conf.pt_prefix.length(), conf.pt_prefix) == 0) {
-					qinfo->is_prime_queue = true;
-					sinfo->has_prime_queue = true;
-				}
-
-			/* check if the queue is a nonprimetime queue */
-			if (conf.npt_prefix[0] != '\0')
-				if (qinfo->name.compare(0, conf.npt_prefix.length(), conf.npt_prefix) == 0) {
-					qinfo->is_nonprime_queue = true;
-					sinfo->has_nonprime_queue = true;
-				}
-
 			/* check if it is OK for jobs to run in the queue */
 			ret = is_ok_to_run_queue(sinfo->policy, qinfo);
 			if (ret == SUCCESS)
@@ -220,6 +199,13 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 			if (ret != QUEUE_NOT_EXEC) {
 				/* get all the jobs which reside in the queue */
 				qinfo->jobs = query_jobs(policy, pbs_sd, qinfo, NULL, qinfo->name);
+
+				if (qinfo->is_ded_queue)
+					sinfo->has_ded_queue = true;
+				if (qinfo->is_prime_queue)
+					sinfo->has_prime_queue = true;
+				else if (qinfo->is_nonprime_queue)
+					sinfo->has_nonprime_queue = true;
 
 				for (auto& pq : conf.peer_queues) {
 					if (qinfo->name == pq.local_queue) {
@@ -258,7 +244,7 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 				qinfo->running_jobs = resource_resv_filter(qinfo->jobs,
 					qinfo->sc.total, check_run_job, NULL, 0);
 
-				if (qinfo->running_jobs  == NULL)
+				if (qinfo->running_jobs == NULL)
 					err = 1;
 
 				if (qinfo->has_soft_limit || qinfo->has_hard_limit) {
@@ -505,23 +491,20 @@ query_queue_info(status *policy, struct batch_status *queue, server_info *sinfo)
 // queue_info constructor
 queue_info::queue_info(const char *qname): name(qname)
 {
-	is_started = 0;
-	is_exec = 0;
-	is_route = 0;
-	is_ded_queue = 0;
-	is_prime_queue = 0;
-	is_nonprime_queue = 0;
-	is_ok_to_run = 0;
-	has_nodes = 0;
+	is_started = false;
+	is_exec = false;
+	is_route = false;
+	is_ok_to_run = false;
+	has_nodes = false;
+	has_soft_limit = false;
+	has_hard_limit = false;
+	is_peer_queue = false;
+	has_resav_limit = false;
+	has_user_limit = false;
+	has_grp_limit = false;
+	has_proj_limit = false;
+	has_all_limit = false;
 	priority = 0;
-	has_soft_limit = 0;
-	has_hard_limit = 0;
-	is_peer_queue = 0;
-	has_resav_limit = 0;
-	has_user_limit = 0;
-	has_grp_limit = 0;
-	has_proj_limit = 0;
-	has_all_limit = 0;
 	init_state_count(&sc);
 	liminfo = lim_alloc_liminfo();
 	num_nodes = 0;
@@ -556,6 +539,22 @@ queue_info::queue_info(const char *qname): name(qname)
 	ignore_nodect_sort	 = 0;
 #endif
 	partition = NULL;
+
+	/* check if the queue is a dedicated time queue */
+	if (name.compare(0, conf.ded_prefix.length(), conf.ded_prefix) == 0)
+		is_ded_queue = true;
+	else
+		is_ded_queue = false;
+	/* check if the queue is a prime time queue */
+	if (name.compare(0, conf.pt_prefix.length(), conf.pt_prefix) == 0)
+		is_prime_queue = true;
+	else
+		is_prime_queue = false;
+	/* check if the queue is a nonprimetime queue */
+	if (name.compare(0, conf.npt_prefix.length(), conf.npt_prefix) == 0)
+		is_nonprime_queue = true;
+	else
+		is_nonprime_queue = false;
 }
 
 /**

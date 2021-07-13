@@ -45,7 +45,6 @@
  * server_info.c - contains functions related to server_info structure.
  *
  * Functions included are:
- * 	query_server()
  * 	query_server_info()
  * 	query_server_dyn_res()
  * 	query_sched_obj()
@@ -182,7 +181,6 @@ query_server(status *pol, int pbs_sd)
 	struct batch_status *server;	/* info about the server */
 	struct batch_status *bs_resvs;	/* batch status of the reservations */
 	server_info *sinfo;		/* scheduler internal form of server info */
-	queue_info **qinfo;		/* array of queues on the server */
 	counts *cts;			/* used to count running per user/grp */
 	int num_express_queues = 0;	/* number of express queues */
 	status *policy;
@@ -216,9 +214,6 @@ query_server(status *pol, int pbs_sd)
 
 	/* We dup'd the policy structure for the cycle */
 	policy = sinfo->policy;
-
-	/* set the time to the current time */
-	sinfo->server_time = policy->current_time;
 
 	if(query_server_dyn_res(sinfo) == -1) {
 		pbs_statfree(server);
@@ -275,15 +270,12 @@ query_server(status *pol, int pbs_sd)
 	/* count the queues and total up the individual queue states
 	 * for server totals. (total up all the state_count structs)
 	 */
-	qinfo = sinfo->queues;
-	while (*qinfo != NULL) {
+	for (int i = 0; sinfo->queues[i] != NULL; i++) {
 		sinfo->num_queues++;
-		total_states(&(sinfo->sc), &((*qinfo)->sc));
+		total_states(&(sinfo->sc), &(sinfo->queues[i]->sc));
 
-		if ((*qinfo)->priority >= sc_attrs.preempt_queue_prio)
+		if (sinfo->queues[i]->priority >= sc_attrs.preempt_queue_prio)
 			num_express_queues++;
-
-		qinfo++;
 	}
 
 	if (num_express_queues > 1)
@@ -431,6 +423,10 @@ query_server(status *pol, int pbs_sd)
 		return NULL;
 	}
 
+	/* Ideally we'd query everything about a node in query_node().  We query
+	 * nodes very early on in the query process.  Not all the information
+	 * necessary for a node is available at that time.  We need to delay it till here.
+	 */
 	for (i = 0; sinfo->nodes[i] != NULL; i++) {
 		auto *ninfo = sinfo->nodes[i];
 		ninfo->nodesig = create_resource_signature(ninfo->res,
@@ -525,6 +521,9 @@ query_server_info(status *pol, struct batch_status *server)
 	}
 
 	policy = sinfo->policy;
+
+	/* set the time to the current time */
+	sinfo->server_time = policy->current_time;
 
 	attrp = server->attribs;
 
