@@ -51,6 +51,8 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <sstream>
+#include <algorithm>
 #include <pbs_ifl.h>
 #include <pbs_internal.h>
 #include <pbs_error.h>
@@ -489,7 +491,31 @@ enum match_string_array_ret match_string_array(const char * const *strarr1, cons
 
 	return SA_NO_MATCH;
 }
+// overloaded
+enum match_string_array_ret match_string_array(const std::vector<std::string> &strarr1, const std::vector<std::string> &strarr2)
+{
+	unsigned int match = 0;
 
+	if (strarr1.empty() || strarr2.empty())
+		return SA_NO_MATCH;
+
+	for (auto &str1: strarr1) {
+		if (std::find(strarr2.begin(), strarr2.end(), str1) != strarr2.end())
+			match++;
+	}
+
+	/* i is the length of strarr1 since we just looped through the whole array */
+	if (match == strarr1.size() && match == strarr2.size())
+		return SA_FULL_MATCH;
+
+	if (match == strarr1.size() || match == strarr2.size())
+		return SA_SUB_MATCH;
+
+	if (match)
+		return SA_PARTIAL_MATCH;
+
+	return SA_NO_MATCH;
+}
 /**
  * @brief
  * 		convert a string array into a printable string
@@ -643,7 +669,7 @@ calc_time_left(resource_resv *resresv, int use_hard_duration)
  *
  */
 int
-cstrcmp(char *s1, char *s2)
+cstrcmp(const char *s1, const char *s2)
 {
 	if (s1 == NULL && s2 == NULL)
 		return 0;
@@ -1550,4 +1576,25 @@ free_ptr_array(void *inp)
 	for (i = 0; arr[i] != NULL; i++)
 		free(arr[i]);
 	free(arr);
+}
+
+/**
+ *
+ *	@brief break apart a comma delimited string into an array of strings.
+ *	       It's an overloaded function of break_comma_list in libutils
+ *
+ *	@param[in] strlist - the comma delimited string
+ *
+ *	@return std::vector<std::string>
+ *
+ */
+std::vector<std::string>
+break_comma_list(const std::string &strlist)
+{
+	std::stringstream sstream(strlist);
+	std::string str;
+	std::vector<std::string> ret;
+	while (std::getline(sstream, str, ','))
+		ret.push_back(str);
+	return ret;
 }

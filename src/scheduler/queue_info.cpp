@@ -98,7 +98,7 @@
  * @return	pointer to the head of the queue structure
  *
  */
-queue_info **
+std::vector<queue_info *>
 query_queues(status *policy, int pbs_sd, server_info *sinfo)
 {
 	/* the linked list of queues returned from the server */
@@ -108,7 +108,7 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 	struct batch_status *cur_queue;
 
 	/* array of pointers to internal scheduling structure for queues */
-	queue_info **qinfo_arr;
+	std::vector<queue_info *> qinfo_arr = {};
 
 	/* the current queue we are working on */
 	queue_info *qinfo;
@@ -128,20 +128,19 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 	/* peer server descriptor */
 	int peer_sd = 0;
 
-	int i, qidx;
-	int num_queues = 0;
+	int i;
 
 	int err = 0;			/* an error has occurred */
 
 	schd_error *sch_err;
 
 	if (policy == NULL || sinfo == NULL)
-		return NULL;
+		return qinfo_arr;
 
 	sch_err = new_schd_error();
 
 	if(sch_err == NULL)
-		return NULL;
+		return qinfo_arr;
 
 	/* get queue info from PBS server */
 	if ((queues = send_statqueue(pbs_sd, NULL, NULL, NULL)) == NULL) {
@@ -151,33 +150,24 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 	log_eventf(PBSEVENT_SCHED, PBS_EVENTCLASS_QUEUE, LOG_NOTICE, "queue_info",
 			"Statque failed: %s (%d)", errmsg, pbs_errno);
 		free_schd_error(sch_err);
-		return NULL;
+		return qinfo_arr;
 	}
 
 	cur_queue = queues;
 
 	while (cur_queue != NULL) {
-		num_queues++;
 		cur_queue = cur_queue->next;
 	}
 
-	if ((qinfo_arr = static_cast<queue_info **>(malloc(sizeof(queue_info *) * (num_queues + 1)))) == NULL) {
-		log_err(errno, __func__, MEM_ERR_MSG);
-		pbs_statfree(queues);
-		free_schd_error(sch_err);
-		return NULL;
-	}
-	qinfo_arr[0] = NULL;
-
 	cur_queue = queues;
 
-	for (i = 0, qidx = 0; cur_queue != NULL && !err; i++) {
+	for (i = 0; cur_queue != NULL && !err; i++) {
 		/* convert queue information from batch_status to queue_info */
 		if ((qinfo = query_queue_info(policy, cur_queue, sinfo)) == NULL) {
 			free_schd_error(sch_err);
 			pbs_statfree(queues);
 			free_queues(qinfo_arr);
-			return NULL;
+			return qinfo_arr;
 		}
 
 		if (queue_in_partition(qinfo, sc_attrs.partition)) {
@@ -265,33 +255,20 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 					counts *allcts;
 					allcts = find_alloc_counts(qinfo->alljobcounts,
 						PBS_ALL_ENTITY);
-					if (qinfo->alljobcounts == NULL)
-						qinfo->alljobcounts = allcts;
 
 					if (qinfo->running_jobs != NULL) {
 						/* set the user and group counts */
 						for (int j = 0; qinfo->running_jobs[j] != NULL; j++) {
 							cts = find_alloc_counts(qinfo->user_counts,
 								qinfo->running_jobs[j]->user);
-							if (qinfo->user_counts == NULL)
-								qinfo->user_counts = cts;
-
 							update_counts_on_run(cts, qinfo->running_jobs[j]->resreq);
 
 							cts = find_alloc_counts(qinfo->group_counts,
 								qinfo->running_jobs[j]->group);
-
-							if (qinfo->group_counts == NULL)
-								qinfo->group_counts = cts;
-
 							update_counts_on_run(cts, qinfo->running_jobs[j]->resreq);
 
 							cts = find_alloc_counts(qinfo->project_counts,
 								qinfo->running_jobs[j]->project);
-
-							if (qinfo->project_counts == NULL)
-								qinfo->project_counts = cts;
-
 							update_counts_on_run(cts, qinfo->running_jobs[j]->resreq);
 
 							update_counts_on_run(allcts, qinfo->running_jobs[j]->resreq);
@@ -301,23 +278,19 @@ query_queues(status *policy, int pbs_sd, server_info *sinfo)
 				}
 			}
 
-			qinfo_arr[qidx++] = qinfo;
-			qinfo_arr[qidx] = NULL;
+			qinfo_arr.push_back(qinfo);
 
 		} else
 			delete qinfo;
 
 		cur_queue = cur_queue->next;
 	}
-	qinfo_arr[qidx] = NULL;
-
 
 	pbs_statfree(queues);
 	free_schd_error(sch_err);
 	if (err) {
 		free_queues(qinfo_arr);
 
-		return NULL;
 	}
 
 	return qinfo_arr;
@@ -433,7 +406,7 @@ query_queue_info(status *policy, struct batch_status *queue, server_info *sinfo)
 			}
 		}
 		else if (!strcmp(attrp->name, ATTR_NodeGroupKey))
-			qinfo->node_group_key = break_comma_list(attrp->value);
+			qinfo->node_group_key = break_comma_list(std::string(attrp->value));
 		else if (!strcmp(attrp->name, ATTR_rescavail)) { /* resources_available*/
 #ifdef NAS
 			/* localmod 040 */
@@ -531,16 +504,7 @@ queue_info::queue_info(const char *qname): name(qname)
 	server = NULL;
 	resv = NULL;
 	nodes = NULL;
-	alljobcounts = NULL;
-	group_counts = NULL;
-	project_counts = NULL;
-	user_counts = NULL;
-	total_alljobcounts = NULL;
-	total_group_counts = NULL;
-	total_project_counts = NULL;
-	total_user_counts = NULL;
 	nodepart = NULL;
-	node_group_key = NULL;
 	allpart = NULL;
 	num_parts = 0;
 	num_topjobs = 0;
@@ -569,18 +533,15 @@ queue_info::queue_info(const char *qname): name(qname)
  */
 
 void
-free_queues(queue_info **qarr)
+free_queues(std::vector<queue_info *> &qarr)
 {
-	int i;
-	if (qarr == NULL)
+	if (qarr.empty())
 		return;
 
-	for (i = 0; qarr[i] != NULL; i++) {
-		free_resource_resv_array(qarr[i]->jobs);
-		delete qarr[i];
+	for (auto queue: qarr) {
+		free_resource_resv_array(queue->jobs);
+		delete queue;
 	}
-
-	free(qarr);
 
 }
 
@@ -649,31 +610,15 @@ update_queue_on_run(queue_info *qinfo, resource_resv *resresv, char *job_state)
 			update_total_counts(NULL, qinfo, resresv, QUEUE);
 
 			cts = find_alloc_counts(qinfo->group_counts, resresv->group);
-
-			if (qinfo->group_counts == NULL)
-				qinfo->group_counts = cts;
-
 			update_counts_on_run(cts, resresv->resreq);
 
 			cts = find_alloc_counts(qinfo->project_counts, resresv->project);
-
-			if (qinfo->project_counts == NULL)
-				qinfo->project_counts = cts;
-
 			update_counts_on_run(cts, resresv->resreq);
 
 			cts = find_alloc_counts(qinfo->user_counts, resresv->user);
-
-			if (qinfo->user_counts == NULL)
-				qinfo->user_counts = cts;
-
 			update_counts_on_run(cts, resresv->resreq);
 
 			auto allcts = find_alloc_counts(qinfo->alljobcounts, PBS_ALL_ENTITY);
-
-			if (qinfo->alljobcounts == NULL)
-				qinfo->alljobcounts = allcts;
-
 			update_counts_on_run(allcts, resresv->resreq);
 		}
 	}
@@ -743,24 +688,16 @@ update_queue_on_end(queue_info *qinfo, resource_resv *resresv, const char *job_s
 		if (is_resresv_running(resresv)) {
 			update_total_counts_on_end(NULL, qinfo, resresv , QUEUE);
 			auto cts = find_counts(qinfo->group_counts, resresv->group);
-
-			if (cts != NULL)
-				update_counts_on_end(cts, resresv->resreq);
+			update_counts_on_end(cts, resresv->resreq);
 
 			cts = find_counts(qinfo->project_counts, resresv->project);
-
-			if (cts != NULL)
-				update_counts_on_end(cts, resresv->resreq);
+			update_counts_on_end(cts, resresv->resreq);
 
 			cts = find_counts(qinfo->user_counts, resresv->user);
-
-			if (cts != NULL)
-				update_counts_on_end(cts, resresv->resreq);
+			update_counts_on_end(cts, resresv->resreq);
 
 			cts = find_alloc_counts(qinfo->alljobcounts, PBS_ALL_ENTITY);
-
-			if (cts != NULL)
-				update_counts_on_end(cts, resresv->resreq);
+			update_counts_on_end(cts, resresv->resreq);
 		}
 	}
 }
@@ -781,7 +718,6 @@ queue_info::~queue_info()
 	free_counts_list(total_user_counts);
 	free_node_partition_array(nodepart);
 	free_node_partition(allpart);
-	free_string_array(node_group_key);
 	lim_free_liminfo(liminfo);
 	free(partition);
 }
@@ -796,30 +732,22 @@ queue_info::~queue_info()
  * @return	the duplicated queue array
  *
  */
-queue_info **
-dup_queues(queue_info **oqueues, server_info *nsinfo)
+std::vector<queue_info *>
+dup_queues(const std::vector<queue_info *> &oqueues, server_info *nsinfo)
 {
-	queue_info **new_queues;
-	int i;
+	std::vector<queue_info *> new_queues = {};
 
-	if (oqueues == NULL)
-		return NULL;
+	if (oqueues.empty())
+		return new_queues;
 
-	if ((new_queues = static_cast<queue_info **>(malloc(
-		(nsinfo->num_queues + 1) * sizeof(queue_info*)))) == NULL) {
-		log_err(errno, __func__, MEM_ERR_MSG);
-		return NULL;
-	}
-
-	for (i = 0; oqueues[i] != NULL; i++) {
-		if ((new_queues[i] = new queue_info(*oqueues[i], nsinfo)) == NULL) {
+	for (auto queue: oqueues) {
+		queue_info *temp;
+		if ((temp = new queue_info(*queue, nsinfo)) == NULL) {
 			free_queues(new_queues);
-			return NULL;
+			return new_queues;
 		}
+		new_queues.push_back(temp);
 	}
-
-	new_queues[i] = NULL;
-
 	return new_queues;
 }
 
@@ -868,17 +796,17 @@ queue_info::queue_info(queue_info& oqinfo, server_info *nsinfo): name(oqinfo.nam
 #endif
 
 	qres = dup_resource_list(oqinfo.qres);
-	alljobcounts = dup_counts_list(oqinfo.alljobcounts);
-	group_counts = dup_counts_list(oqinfo.group_counts);
-	project_counts = dup_counts_list(oqinfo.project_counts);
-	user_counts = dup_counts_list(oqinfo.user_counts);
-	total_alljobcounts = dup_counts_list(oqinfo.total_alljobcounts);
-	total_group_counts = dup_counts_list(oqinfo.total_group_counts);
-	total_project_counts = dup_counts_list(oqinfo.total_project_counts);
-	total_user_counts = dup_counts_list(oqinfo.total_user_counts);
+	alljobcounts = dup_counts_umap(oqinfo.alljobcounts);
+	group_counts = dup_counts_umap(oqinfo.group_counts);
+	project_counts = dup_counts_umap(oqinfo.project_counts);
+	user_counts = dup_counts_umap(oqinfo.user_counts);
+	total_alljobcounts = dup_counts_umap(oqinfo.total_alljobcounts);
+	total_group_counts = dup_counts_umap(oqinfo.total_group_counts);
+	total_project_counts = dup_counts_umap(oqinfo.total_project_counts);
+	total_user_counts = dup_counts_umap(oqinfo.total_user_counts);
 	nodepart = dup_node_partition_array(oqinfo.nodepart, nsinfo);
 	allpart = dup_node_partition(oqinfo.allpart, nsinfo);
-	node_group_key = dup_string_arr(oqinfo.node_group_key);
+	node_group_key = oqinfo.node_group_key;
 
 	if (oqinfo.resv != NULL) {
 		resv = find_resource_resv_by_indrank(nsinfo->resvs, oqinfo.resv->resresv_ind, oqinfo.resv->rank);
@@ -921,18 +849,18 @@ queue_info::queue_info(queue_info& oqinfo, server_info *nsinfo): name(oqinfo.nam
  *
  */
 queue_info *
-find_queue_info(queue_info **qinfo_arr, const std::string& name)
+find_queue_info(std::vector<queue_info *> &qinfo_arr, const std::string& name)
 {
-	int i;
-
-	if (qinfo_arr == NULL)
+	if (qinfo_arr.empty())
 		return NULL;
 
-	for (i = 0; qinfo_arr[i] != NULL && qinfo_arr[i]->name != name; i++)
-		;
+	for (auto queue: qinfo_arr) {
+		if (queue->name == name)
+			return queue;
+	}
 
 	/* either we have found our queue or the NULL sentinal value */
-	return qinfo_arr[i];
+	return NULL;
 }
 
 /**

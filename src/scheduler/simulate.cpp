@@ -1080,7 +1080,7 @@ new_timed_event()
  *
  * @par
  * 		dup_timed_event() modifies the run_event and end_event memebers of the resource_resv.
- * 		If dup_timed_event() is not called as part of dup_server_info(), the resource_resvs of
+ * 		If dup_timed_event() is not called as part of server_info() copy constructor, the resource_resvs of
  * 		the main server_info will be modified, even if server_info->calendar is not.
  *
  * @param[in]	ote 	- timed_event to copy
@@ -1919,25 +1919,25 @@ policy_change_info(server_info *sinfo, resource_resv *resresv)
 		return 0;
 	}
 
-	if (sinfo->queues != NULL) {
+	if (!sinfo->queues.empty()) {
 		if (policy->is_ded_time && sinfo->has_ded_queue) {
-			for (int i = 0; sinfo->queues[i] != NULL; i++) {
-				if (sinfo->queues[i]->is_ded_queue &&
-					sinfo->queues[i]->jobs !=NULL)
+			for (auto qinfo: sinfo->queues) {
+				if (qinfo->is_ded_queue &&
+					qinfo->jobs !=NULL)
 					return 1;
 			}
 		}
 		if (policy->is_prime == PRIME && sinfo->has_prime_queue) {
-			for (int i = 0; sinfo->queues[i] != NULL; i++) {
-				if (sinfo->queues[i]->is_prime_queue &&
-					sinfo->queues[i]->jobs !=NULL)
+			for (auto qinfo: sinfo->queues) {
+				if (qinfo->is_prime_queue &&
+					qinfo->jobs !=NULL)
 					return 1;
 			}
 		}
 		if (policy->is_prime == NON_PRIME && sinfo->has_nonprime_queue) {
-			for (int i = 0; sinfo->queues[i] != NULL; i++) {
-				if (sinfo->queues[i]->is_nonprime_queue &&
-					sinfo->queues[i]->jobs !=NULL)
+			for (auto qinfo: sinfo->queues) {
+				if (qinfo->is_nonprime_queue &&
+					qinfo->jobs !=NULL)
 					return 1;
 			}
 		}

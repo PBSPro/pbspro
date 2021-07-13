@@ -765,10 +765,10 @@ query_jobs_chunk(th_data_query_jinfo *data)
 		if (resresv->job->ginfo == NULL) {
 			char fairshare_name[100];
 #ifdef NAS /* localmod 058 */
-			sprintf(fairshare_name, "%s:%s:%s", resresv->group, resresv->user,
+			sprintf(fairshare_name, "%s:%s:%s", resresv->group.c_str(), resresv->user.c_str(),
 				(qinfo->name != NULL ? qinfo->name : ""));
 #else
-			sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
+			sprintf(fairshare_name, "%s:%s", resresv->group.c_str(), resresv->user.c_str());
 #endif /* localmod 058 */
 			if (resresv->server->fstree != NULL) {
 				resresv->job->ginfo = find_alloc_ginfo(fairshare_name, resresv->server->fstree->root);
@@ -778,7 +778,7 @@ query_jobs_chunk(th_data_query_jinfo *data)
 		}
 #ifdef NAS /* localmod 034 */
 		if (resresv->job->sh_info == NULL) {
-			sprintf(fairshare_name, "%s:%s", resresv->group, resresv->user);
+			sprintf(fairshare_name, "%s:%s", resresv->group.c_str(), resresv->user.c_str());
 			resresv->job->sh_info = site_find_alloc_share(resresv->server,
 								      fairshare_name);
 		}
@@ -1265,11 +1265,11 @@ query_job(struct batch_status *job, server_info *sinfo, schd_error *err)
 		else if (!strcmp(attrp->name, ATTR_released)) /* resources_released */
 			resresv->job->resreleased = parse_execvnode(attrp->value, sinfo, NULL);
 		else if (!strcmp(attrp->name, ATTR_euser))	/* account name */
-			resresv->user = string_dup(attrp->value);
+			resresv->user = attrp->value;
 		else if (!strcmp(attrp->name, ATTR_egroup))	/* group name */
-			resresv->group = string_dup(attrp->value);
+			resresv->group = attrp->value;
 		else if (!strcmp(attrp->name, ATTR_project))	/* project name */
-			resresv->project = string_dup(attrp->value);
+			resresv->project = attrp->value;
 		else if (!strcmp(attrp->name, ATTR_resv_ID))	/* reserve_ID */
 			resresv->job->resv_id = string_dup(attrp->value);
 		else if (!strcmp(attrp->name, ATTR_altid))    /* vendor ID */
@@ -2516,11 +2516,11 @@ create_resresv_set_by_resresv(status *policy, server_info *sinfo, resource_resv 
 	}
 
 	if (resresv_set_use_user(sinfo, rset->qinfo))
-		rset->user = string_dup(resresv->user);
+		rset->user = string_dup(resresv->user.c_str());
 	if (resresv_set_use_grp(sinfo, rset->qinfo))
-		rset->group = string_dup(resresv->group);
+		rset->group = string_dup(resresv->group.c_str());
 	if (resresv_set_use_proj(sinfo, rset->qinfo))
-		rset->project = string_dup(resresv->project);
+		rset->project = string_dup(resresv->project.c_str());
 
 	rset->select_spec = new selspec(*resresv_set_which_selspec(resresv));
 	if (rset->select_spec == NULL) {
@@ -2556,7 +2556,7 @@ create_resresv_set_by_resresv(status *policy, server_info *sinfo, resource_resv 
  * @retval -1 if not found or on error
  */
 int
-find_resresv_set(status *policy, resresv_set **rsets, char *user, char *group, char *project, selspec *sel, place *pl, resource_req *req, queue_info *qinfo)
+find_resresv_set(status *policy, resresv_set **rsets, const char *user, const char *group, const char *project, selspec *sel, place *pl, resource_req *req, queue_info *qinfo)
 {
 	int i;
 
@@ -2607,9 +2607,9 @@ find_resresv_set(status *policy, resresv_set **rsets, char *user, char *group, c
 int
 find_resresv_set_by_resresv(status *policy, resresv_set **rsets, resource_resv *resresv)
 {
-	char *user = NULL;
-	char *grp = NULL;
-	char *proj = NULL;
+	const char *user = NULL;
+	const char *grp = NULL;
+	const char *proj = NULL;
 	queue_info *qinfo = NULL;
 	selspec *sspec;
 
@@ -2621,13 +2621,13 @@ find_resresv_set_by_resresv(status *policy, resresv_set **rsets, resource_resv *
 			qinfo = resresv->job->queue;
 
 	if (resresv_set_use_user(resresv->server, qinfo))
-		user = resresv->user;
+		user = resresv->user.c_str();
 
 	if (resresv_set_use_grp(resresv->server, qinfo))
-		grp = resresv->group;
+		grp = resresv->group.c_str();
 
 	if (resresv_set_use_proj(resresv->server, qinfo))
-		proj = resresv->project;
+		proj = resresv->project.c_str();
 
 	sspec = resresv_set_which_selspec(resresv);
 
@@ -3295,7 +3295,9 @@ find_jobs_to_preempt(status *policy, resource_resv *hjob, server_info *sinfo, in
 	}
 
 	/* use locally dup'd copy of sinfo so we don't modify the original */
-	if ((nsinfo = dup_server_info(sinfo)) == NULL) {
+	try {
+	    nsinfo = new server_info(*sinfo);
+	} catch (std::exception &e) {
 		free_schd_error_list(full_err);
 		free(pjobs);
 		free_string_array(preempt_targets_list);
@@ -3561,7 +3563,7 @@ find_jobs_to_preempt(status *policy, resource_resv *hjob, server_info *sinfo, in
 			*no_of_jobs = i;
 	}
 cleanup:
-	free_server(nsinfo);
+	delete nsinfo;
 	free(pjobs);
 	free(prjobs);
 	free_schd_error_list(full_err);
@@ -4709,7 +4711,7 @@ preemption_similarity(resource_resv *hjob, resource_resv *pjob, schd_error *full
 			case SERVER_USER_RES_LIMIT_REACHED:
 			case SERVER_BYUSER_JOB_LIMIT_REACHED:
 			case SERVER_BYUSER_RES_LIMIT_REACHED:
-				if (strcmp(pjob->user, hjob->user) == 0)
+				if (pjob->user == hjob->user)
 					match = 1;
 				break;
 			case QUEUE_USER_LIMIT_REACHED:
@@ -4717,7 +4719,7 @@ preemption_similarity(resource_resv *hjob, resource_resv *pjob, schd_error *full
 			case QUEUE_BYUSER_JOB_LIMIT_REACHED:
 			case QUEUE_BYUSER_RES_LIMIT_REACHED:
 				if (pjob->job->queue == hjob->job->queue &&
-					strcmp(pjob->user, hjob->user) == 0)
+					(pjob->user == hjob->user))
 					match = 1;
 
 				break;
@@ -4725,7 +4727,7 @@ preemption_similarity(resource_resv *hjob, resource_resv *pjob, schd_error *full
 			case SERVER_GROUP_RES_LIMIT_REACHED:
 			case SERVER_BYGROUP_JOB_LIMIT_REACHED:
 			case SERVER_BYGROUP_RES_LIMIT_REACHED:
-				if (strcmp(pjob->group, hjob->group) == 0)
+				if (pjob->group == hjob->group)
 					match = 1;
 				break;
 
@@ -4734,14 +4736,14 @@ preemption_similarity(resource_resv *hjob, resource_resv *pjob, schd_error *full
 			case QUEUE_BYGROUP_JOB_LIMIT_REACHED:
 			case QUEUE_BYGROUP_RES_LIMIT_REACHED:
 				if (pjob->job->queue == hjob->job->queue &&
-					strcmp(pjob->group, hjob->group) == 0)
+					(pjob->group == hjob->group))
 					match = 1;
 				break;
 			case SERVER_PROJECT_LIMIT_REACHED:
 			case SERVER_PROJECT_RES_LIMIT_REACHED:
 			case SERVER_BYPROJECT_RES_LIMIT_REACHED:
 			case SERVER_BYPROJECT_JOB_LIMIT_REACHED:
-				if (strcmp(pjob->project, hjob->project) == 0)
+				if (pjob->project == hjob->project)
 					match = 1;
 				break;
 			case QUEUE_PROJECT_LIMIT_REACHED:
@@ -4749,7 +4751,7 @@ preemption_similarity(resource_resv *hjob, resource_resv *pjob, schd_error *full
 			case QUEUE_BYPROJECT_RES_LIMIT_REACHED:
 			case QUEUE_BYPROJECT_JOB_LIMIT_REACHED:
 				if (pjob->job->queue == hjob->job->queue &&
-					strcmp(pjob->project, hjob->project) == 0)
+					(pjob->project == hjob->project))
 					match = 1;
 				break;
 			case SERVER_JOB_LIMIT_REACHED:
@@ -4996,40 +4998,40 @@ static int cull_preemptible_jobs(resource_resv *job, const void *arg)
 	switch (inp->err->error_code) {
 		case SERVER_USER_RES_LIMIT_REACHED:
 		case SERVER_BYUSER_RES_LIMIT_REACHED:
-			if ((strcmp(job->user, inp->job->user) == 0) &&
+			if ((job->user == inp->job->user) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
 		case QUEUE_USER_RES_LIMIT_REACHED:
 		case QUEUE_BYUSER_RES_LIMIT_REACHED:
 			if ((job->job->queue == inp->job->job->queue) &&
-			    (strcmp(job->user, inp->job->user) == 0) &&
+			    (job->user == inp->job->user) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
 		case SERVER_GROUP_RES_LIMIT_REACHED:
 		case SERVER_BYGROUP_RES_LIMIT_REACHED:
-			if ((strcmp(job->group, inp->job->group) == 0) &&
+			if ((job->group == inp->job->group) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
 		case QUEUE_GROUP_RES_LIMIT_REACHED:
 		case QUEUE_BYGROUP_RES_LIMIT_REACHED:
 			if ((job->job->queue == inp->job->job->queue) &&
-			    (strcmp(job->group, inp->job->group) == 0) &&
+			    (job->group == inp->job->group) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
 		case SERVER_PROJECT_RES_LIMIT_REACHED:
 		case SERVER_BYPROJECT_RES_LIMIT_REACHED:
-			if ((strcmp(job->user, inp->job->user) == 0) &&
+			if ((job->user == inp->job->user) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
 		case QUEUE_PROJECT_RES_LIMIT_REACHED:
 		case QUEUE_BYPROJECT_RES_LIMIT_REACHED:
 			if ((job->job->queue == inp->job->job->queue) &&
-			    (strcmp(job->project, inp->job->project) == 0) &&
+			    (job->project == inp->job->project) &&
 			    find_resource_req(job->resreq, inp->err->rdef) != NULL)
 				return 1;
 			break;
@@ -5039,35 +5041,35 @@ static int cull_preemptible_jobs(resource_resv *job, const void *arg)
 			break;
 		case SERVER_USER_LIMIT_REACHED:
 		case SERVER_BYUSER_JOB_LIMIT_REACHED:
-			if (strcmp(job->user, inp->job->user) == 0)
+			if (job->user == inp->job->user)
 				return 1;
 			break;
 		case QUEUE_USER_LIMIT_REACHED:
 		case QUEUE_BYUSER_JOB_LIMIT_REACHED:
 			if ((job->job->queue == inp->job->job->queue) &&
-			    (strcmp(job->user, inp->job->user) == 0))
+			    (job->user == inp->job->user))
 				return 1;
 			break;
 		case SERVER_GROUP_LIMIT_REACHED:
 		case SERVER_BYGROUP_JOB_LIMIT_REACHED:
-			if (strcmp(job->group, inp->job->group) == 0)
+			if (job->group == inp->job->group)
 				return 1;
 			break;
 		case QUEUE_GROUP_LIMIT_REACHED:
 		case QUEUE_BYGROUP_JOB_LIMIT_REACHED:
 			if((job->job->queue == inp->job->job->queue) &&
-			   (strcmp(job->group, inp->job->group) == 0))
+			   (job->group == inp->job->group))
 				return 1;
 			break;
 		case SERVER_PROJECT_LIMIT_REACHED:
 		case SERVER_BYPROJECT_JOB_LIMIT_REACHED:
-			if (strcmp(job->project, inp->job->project) == 0)
+			if (job->project == inp->job->project)
 				return 1;
 			break;
 		case QUEUE_PROJECT_LIMIT_REACHED:
 		case QUEUE_BYPROJECT_JOB_LIMIT_REACHED:
 			if ((job->job->queue == inp->job->job->queue) &&
-			   (strcmp(job->project, inp->job->project) == 0))
+			   (job->project == inp->job->project))
 				return 1;
 			break;
 		case SERVER_JOB_LIMIT_REACHED:

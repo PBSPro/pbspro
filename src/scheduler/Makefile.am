@@ -91,6 +91,7 @@ libpbs_sched_a_SOURCES = \
 	job_info.cpp \
 	job_info.h \
 	limits.cpp \
+	limits_if.h \
 	misc.cpp \
 	misc.h \
 	multi_threading.cpp \
@@ -117,6 +118,7 @@ libpbs_sched_a_SOURCES = \
 	resource_resv.h \
 	resv_info.cpp \
 	resv_info.h \
+	sched_exception.cpp \
 	sched_ifl_wrappers.cpp \
 	server_info.cpp \
 	server_info.h \

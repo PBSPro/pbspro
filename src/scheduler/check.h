@@ -126,14 +126,14 @@ sch_resource_t dynamic_avail(schd_resource *res);
  *			  If res arg is NULL return number of running jobs
  *			  otherwise return named resource
  *
- *	cts_list - counts list to search
+ *	cts_list - counts map to search
  *	name     - name of counts structure to find
  *	res      - resource to find or if NULL, return number of running
  *			resource amount
  *	cnt	- output param for address of the matching counts structure
  *	rreq	- output param for address of the matching resource_count structure
  */
-sch_resource_t find_counts_elm(counts *cts_list, const char *name, resdef *res, counts **cnt, resource_count **rreq);
+sch_resource_t find_counts_elm(counts_umap &cts_list, const std::string &name, resdef *res, counts **cnt, resource_count **rreq);
 
 
 /*

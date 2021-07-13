@@ -1128,7 +1128,7 @@ end_cycle_tasks(server_info *sinfo)
 	 */
 	if (sinfo != NULL) {
 		sinfo->fstree = NULL;
-		free_server(sinfo);	/* free server and queues and jobs */
+		delete sinfo;	/* free server and queues and jobs */
 	}
 
 	/* close any open connections to peers */
@@ -1240,17 +1240,17 @@ run_job(int pbs_sd, resource_resv *rjob, char *execvnode, int has_runjob_hook, s
 	if (rjob->is_peer_ob) {
 		char buf[100]; /* used to assemble queue@localserver */
 
-		if (strchr(rjob->server->name, (int) ':') == NULL) {
+		if (rjob->server->name.find(':') == std::string::npos) {
 #ifdef NAS /* localmod 005 */
 			sprintf(buf, "%s@%s:%u", rjob->job->queue->name.c_str(),
 #else
 			sprintf(buf, "%s@%s:%d", rjob->job->queue->name.c_str(),
 #endif /* localmod 005 */
-				rjob->server->name, pbs_conf.batch_service_port);
+				rjob->server->name.c_str(), pbs_conf.batch_service_port);
 		}
 		else {
 			sprintf(buf, "%s@%s", rjob->job->queue->name.c_str(),
-				rjob->server->name);
+				rjob->server->name.c_str());
 		}
 
 		rc = pbs_movejob(rjob->job->peer_sd, const_cast<char *>(rjob->name.c_str()), buf, NULL);
@@ -1867,11 +1867,14 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 		if (find_timed_event(nexte, topjob->name, IGNORE_DISABLED_EVENTS, TIMED_NOEVENT, 0) != NULL)
 			return 1;
 	}
-	if ((nsinfo = dup_server_info(sinfo)) == NULL)
+	try {
+		nsinfo = new server_info(*sinfo);
+	} catch (std::exception &e) {
 		return 0;
+	}
 
 	if ((njob = find_resource_resv_by_indrank(nsinfo->jobs, topjob->resresv_ind, topjob->rank)) == NULL) {
-		free_server(nsinfo);
+		delete nsinfo;
 		return 0;
 	}
 
@@ -1900,7 +1903,7 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 		if (topjob->job->is_array) {
 			tjob = queue_subjob(topjob, sinfo, topjob->job->queue);
 			if (tjob == NULL) {
-				free_server(nsinfo);
+				delete nsinfo;
 				return 0;
 			}
 
@@ -1909,7 +1912,7 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 			if (njob == NULL) {
 				log_event(PBSEVENT_DEBUG, PBS_EVENTCLASS_JOB, LOG_DEBUG, __func__,
 					"Can't find new subjob in simulated universe");
-				free_server(nsinfo);
+				delete nsinfo;
 				return 0;
 			}
 			/* The subjob is just for the calendar, not for running */
@@ -1946,11 +1949,11 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 					bjob->execselect = parse_selspec(selectspec);
 				}
 			} else {
-				free_server(nsinfo);
+				delete nsinfo;
 				return 0;
 			}
 		} else {
-			free_server(nsinfo);
+			delete nsinfo;
 			return 0;
 		}
 
@@ -1964,14 +1967,14 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 
 		auto te_start = create_event(TIMED_RUN_EVENT, bjob->start, bjob, NULL, NULL);
 		if (te_start == NULL) {
-			free_server(nsinfo);
+			delete nsinfo;
 			return 0;
 		}
 		add_event(sinfo->calendar, te_start);
 
 		auto te_end = create_event(TIMED_END_EVENT, bjob->end, bjob, NULL, NULL);
 		if (te_end == NULL) {
-			free_server(nsinfo);
+			delete nsinfo;
 			return 0;
 		}
 		add_event(sinfo->calendar, te_end);
@@ -2021,10 +2024,10 @@ add_job_to_calendar(int pbs_sd, status *policy, server_info *sinfo,
 	} else if (start_time == 0) {
 		log_event(PBSEVENT_SCHED, PBS_EVENTCLASS_JOB, LOG_WARNING, topjob->name,
 			"Error in calculation of start time of top job");
-		free_server(nsinfo);
+		delete nsinfo;
 		return 0;
 	}
-	free_server(nsinfo);
+	delete nsinfo;
 
 	return 1;
 }
@@ -2151,7 +2154,7 @@ next_job(status *policy, server_info *sinfo, int flag)
 	/* last_queue is the index into a queue array of the last time
 	 * the function was called
 	 */
-	static int last_queue;
+	static unsigned int last_queue;
 	static int last_queue_index;
 	static int last_job_index;
 
@@ -2245,10 +2248,10 @@ next_job(status *policy, server_info *sinfo, int flag)
 
 		while((rjob == NULL) && (i < queue_list_size)) {
 			/* Calculating number of queues at this priority level */
-			int queue_index_size = count_array(sinfo->queue_list[i]);
-			int queues_finished = 0;
+			unsigned int queue_index_size = count_array(sinfo->queue_list[i]);
+			unsigned int queues_finished = 0;
 
-			for (int j = last_queue; j < queue_index_size; j++) {
+			for (unsigned int j = last_queue; j < queue_index_size; j++) {
 				ind = find_runnable_resresv_ind(sinfo->queue_list[i][j]->jobs, 0);
 				if(ind != -1)
 					rjob = sinfo->queue_list[i][j]->jobs[ind];
@@ -2297,12 +2300,12 @@ next_job(status *policy, server_info *sinfo, int flag)
 			}
 		}
 		if (skip & SKIP_NON_NORMAL_JOBS) {
-			while(last_queue < sinfo->num_queues &&
+			while(last_queue < sinfo->queues.size() &&
 			     ((ind = find_runnable_resresv_ind(sinfo->queues[last_queue]->jobs, last_job_index)) == -1)) {
 				last_queue++;
 				last_job_index = 0;
 			}
-			if (last_queue < sinfo->num_queues && ind != -1) {
+			if (last_queue < sinfo->queues.size() && ind != -1) {
 				rjob = sinfo->queues[last_queue]->jobs[ind];
 				last_job_index = ind;
 			} else

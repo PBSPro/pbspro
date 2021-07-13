@@ -80,7 +80,7 @@ int cmp_fairshare(const void *j1, const void *j2);
  *                           by decending priority
  *
  */
-int cmp_queue_prio_dsc(const void *q1, const void *q2);
+bool cmp_queue_prio_dsc(const queue_info *q1, const queue_info *q2);
 
 /*
  *      cmp_fair_share - compare function for the fair share algorithm

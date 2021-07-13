@@ -120,9 +120,6 @@
  */
 resource_resv::resource_resv(const std::string& rname): name(rname) 
 {
-	user = NULL;
-	group = NULL;
-	project = NULL;
 	nodepart_name = NULL;
 	select = NULL;
 	execselect = NULL;
@@ -309,9 +306,6 @@ free_resource_resv_array(resource_resv **resresv_arr)
  */
 resource_resv::~resource_resv()
 {
-	free(user);
-	free(group);
-	free(project);
 	free(nodepart_name);
 	delete select;
 	delete execselect;
@@ -551,9 +545,9 @@ dup_resource_resv(resource_resv *oresresv, server_info *nsinfo, queue_info *nqin
 	nresresv->server = nsinfo;
 
 	nresresv->svr_inst_id = string_dup(oresresv->svr_inst_id);
-	nresresv->user = string_dup(oresresv->user);
-	nresresv->group = string_dup(oresresv->group);
-	nresresv->project = string_dup(oresresv->project);
+	nresresv->user = oresresv->user;
+	nresresv->group = oresresv->group;
+	nresresv->project = oresresv->project;
 
 	nresresv->nodepart_name = string_dup(oresresv->nodepart_name);
 	if (oresresv->select != NULL)
@@ -763,13 +757,13 @@ is_resource_resv_valid(resource_resv *resresv, schd_error *err)
 		return 0;
 	}
 
-	if (resresv->user == NULL) {
+	if (resresv->user.empty()) {
 		set_schd_error_codes(err, NEVER_RUN, ERR_SPECIAL);
 		set_schd_error_arg(err, SPECMSG, "No User");
 		return 0;
 	}
 
-	if (resresv->group == NULL) {
+	if (resresv->group.empty()) {
 		set_schd_error_codes(err, NEVER_RUN, ERR_SPECIAL);
 		set_schd_error_arg(err, SPECMSG, "No Group");
 		return 0;

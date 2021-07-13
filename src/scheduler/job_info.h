@@ -350,7 +350,7 @@ resresv_set **dup_resresv_set_array(resresv_set **osets, server_info *nsinfo);
 resresv_set *create_resresv_set_by_resresv(status *policy, server_info *sinfo, resource_resv *resresv);
 
 /* find a resresv_set by its internal components */
-int find_resresv_set(status *policy, resresv_set **rsets, char *user, char *group, char *project, selspec *sel, place *pl, resource_req *req, queue_info *qinfo);
+int find_resresv_set(status *policy, resresv_set **rsets, const char *user, const char *group, const char *project, selspec *sel, place *pl, resource_req *req, queue_info *qinfo);
 
 /* find a resresv_set with a resresv as a template */
 int find_resresv_set_by_resresv(status *policy, resresv_set **rsets, resource_resv *resresv);

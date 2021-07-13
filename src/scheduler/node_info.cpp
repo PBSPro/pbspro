@@ -670,8 +670,6 @@ node_info::node_info(const std::string& nname): name(nname)
 	run_resvs_arr = NULL;
 	res = NULL;
 	server = NULL;
-	group_counts = NULL;
-	user_counts = NULL;
 
 	max_running = SCHD_INFINITY;
 	max_user_run = SCHD_INFINITY;
@@ -1448,8 +1446,8 @@ dup_node_info(node_info *onode, server_info *nsinfo, unsigned int flags)
 	nnode->max_user_run = onode->max_user_run;
 	nnode->max_group_run = onode->max_group_run;
 
-	nnode->group_counts = dup_counts_list(onode->group_counts);
-	nnode->user_counts = dup_counts_list(onode->user_counts);
+	nnode->group_counts = dup_counts_umap(onode->group_counts);
+	nnode->user_counts = dup_counts_umap(onode->user_counts);
 
 	set_current_aoe(nnode, onode->current_aoe);
 	set_current_eoe(nnode, onode->current_eoe);
@@ -1462,7 +1460,7 @@ dup_node_info(node_info *onode, server_info *nsinfo, unsigned int flags)
 		nnode->svr_node = find_node_by_indrank(nsinfo->nodes, onode->node_ind, onode->rank);
 
 	/* Duplicate list of jobs and running reservations.
-	 * If caller is dup_server_info() then nsinfo->resvs/jobs should be NULL,
+	 * If caller is server_info's copy constructor then nsinfo->resvs/jobs should be NULL,
 	 * but running reservations and jobs are collected later in the caller.
 	 * Otherwise, we collect running reservations or jobs here.
 	 */
@@ -1634,19 +1632,13 @@ collect_jobs_on_nodes(node_info **ninfo_arr, resource_resv **resresv_arr, int si
 					if (find_resource_resv_by_indrank(ninfo_arr[i]->job_arr,
 						-1, job->rank) == NULL) {
 						if (ninfo_arr[i]->has_hard_limit) {
-						cts = find_alloc_counts(ninfo_arr[i]->group_counts,
-							job->group);
-						if (ninfo_arr[i]->group_counts == NULL)
-							ninfo_arr[i]->group_counts = cts;
+							cts = find_alloc_counts(ninfo_arr[i]->group_counts,
+								job->group);
+							update_counts_on_run(cts, job->resreq);
 
-						update_counts_on_run(cts, job->resreq);
-
-						cts = find_alloc_counts(ninfo_arr[i]->user_counts,
-							job->user);
-						if (ninfo_arr[i]->user_counts == NULL)
-							ninfo_arr[i]->user_counts = cts;
-
-						update_counts_on_run(cts, job->resreq);
+							cts = find_alloc_counts(ninfo_arr[i]->user_counts,
+								job->user);
+							update_counts_on_run(cts, job->resreq);
 						}
 
 						ninfo_arr[i]->job_arr[k] = job;
@@ -1791,17 +1783,9 @@ update_node_on_run(nspec *ns, resource_resv *resresv, const char *job_state)
 
 	if (ninfo->has_hard_limit && resresv->is_job) {
 		cts = find_alloc_counts(ninfo->group_counts, resresv->group);
-
-		if (ninfo->group_counts == NULL)
-			ninfo->group_counts = cts;
-
 		update_counts_on_run(cts, ns->resreq);
 
 		cts = find_alloc_counts(ninfo->user_counts, resresv->user);
-
-		if (ninfo->user_counts == NULL)
-			ninfo->user_counts = cts;
-
 		update_counts_on_run(cts, ns->resreq);
 	}
 
@@ -2477,9 +2461,8 @@ eval_placement(status *policy, selspec *spec, node_info **ninfo_arr, place *pl,
 		hostsets = resresv->server->hostsets;
 
 	if (hostsets == NULL) {
-		const char *host_arr[2] = {"host", NULL};
-
-		npc = find_alloc_np_cache(policy, &resresv->server->npc_arr, host_arr, nptr, NULL);
+		std::vector<std::string> host_arr{"host"};
+		npc = find_alloc_np_cache(policy, resresv->server->npc_arr, host_arr, nptr, NULL);
 		if (npc != NULL)
 			hostsets = npc->nodepart;
 	}
@@ -5086,7 +5069,7 @@ node_up_event(node_info *node, void *arg)
 		set_node_info_state(node, ND_free);
 
 	sinfo = node->server;
-	if (sinfo->node_group_enable && sinfo->node_group_key != NULL) {
+	if (sinfo->node_group_enable && !sinfo->node_group_key.empty()) {
 		node_partition_update_array(sinfo->policy, sinfo->nodepart);
 		qsort(sinfo->nodepart, sinfo->num_parts,
 			sizeof(node_partition *), cmp_placement_sets);
@@ -5134,7 +5117,7 @@ node_down_event(node_info *node, void *arg)
 
 	set_node_info_state(node, ND_down);
 
-	if (sinfo->node_group_enable && sinfo->node_group_key != NULL) {
+	if (sinfo->node_group_enable && !sinfo->node_group_key.empty()) {
 		node_partition_update_array(sinfo->policy, sinfo->nodepart);
 		qsort(sinfo->nodepart, sinfo->num_parts,
 			sizeof(node_partition *), cmp_placement_sets);

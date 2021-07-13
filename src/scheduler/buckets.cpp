@@ -393,7 +393,7 @@ char *create_node_bucket_name(status *policy, node_bucket *nb) {
  * @retval NULL on error
  */
 node_bucket **
-create_node_buckets(status *policy, node_info **nodes, queue_info **queues, unsigned int flags) {
+create_node_buckets(status *policy, node_info **nodes, std::vector<queue_info *> &queues, unsigned int flags) {
 	int i;
 	int j = 0;
 	node_bucket **buckets = NULL;
@@ -421,7 +421,7 @@ create_node_buckets(status *policy, node_info **nodes, queue_info **queues, unsi
 		if (nodes[i]->is_down || nodes[i]->is_offline || node_ind == -1 || nodes[i]->lic_lock == 0)
 			continue;
 
-		if (queues != NULL && !nodes[i]->queue_name.empty())
+		if (!queues.empty() && !nodes[i]->queue_name.empty())
 			qinfo = find_queue_info(queues, nodes[i]->queue_name);
 
 		bkt_ind = find_node_bucket_ind(buckets, nodes[i]->res, qinfo, nodes[i]->priority);
@@ -1077,7 +1077,7 @@ check_node_buckets(status *policy, server_info *sinfo, queue_info *qinfo, resour
 	 * If it doesn't exist, we'll create it and add it to the cache
 	 */
 	if (resresv->place_spec->group != NULL) {
-		char *grouparr[2] = {0};
+		std::vector<std::string> groupvec{resresv->place_spec->group};
 		np_cache *npc = NULL;
 		node_info **ninfo_arr;
 
@@ -1086,9 +1086,7 @@ check_node_buckets(status *policy, server_info *sinfo, queue_info *qinfo, resour
 		else
 			ninfo_arr = sinfo->unassoc_nodes;
 
-		grouparr[0] = resresv->place_spec->group;
-		grouparr[1] = NULL;
-		npc = find_alloc_np_cache(policy, &(sinfo->npc_arr), grouparr, ninfo_arr, cmp_placement_sets);
+		npc = find_alloc_np_cache(policy, sinfo->npc_arr, groupvec, ninfo_arr, cmp_placement_sets);
 		if (npc != NULL)
 			nodepart = npc->nodepart;
 	}

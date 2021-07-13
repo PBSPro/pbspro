@@ -89,11 +89,6 @@ schd_resource *find_resource_by_str(schd_resource *reslist, const std::string& n
 schd_resource *find_resource(schd_resource *reslist, resdef *def);
 
 /*
- *	free_server_info - free the space used by a server_info structure
- */
-void free_server_info(server_info *sinfo);
-
-/*
  *      free_resource - free a resource struct
  */
 void free_resource(schd_resource *res);
@@ -102,11 +97,6 @@ void free_resource(schd_resource *res);
  *      free_resource_list - free a resource list
  */
 void free_resource_list(schd_resource *res_list);
-
-/*
- *      new_server_info - allocate and initalize a new server_info struct
- */
-server_info *new_server_info(int limallocflag);
 
 /*
  *      new_resource - allocate and initialize new resoruce struct
@@ -142,7 +132,7 @@ int create_server_arrays(server_info *sinfo);
 /*
  *	copy_server_arrays - copy server's jobs and all_resresv arrays
  */
-int copy_server_arrays(server_info *nsinfo, server_info *osinfo);
+int copy_server_arrays(server_info *nsinfo, const server_info *osinfo);
 
 
 /*
@@ -185,11 +175,6 @@ int check_running_job_not_in_reservation(resource_resv *job, const void *arg);
  *				running reservations
  */
 int check_resv_running_on_node(resource_resv *resv, const void *arg);
-
-/*
- *      dup_server - duplicate a server_info struct
- */
-server_info *dup_server_info(server_info *osinfo);
 
 /*
  *      dup_resource_list - dup a resource list
@@ -248,35 +233,25 @@ int is_unassoc_node(node_info *ninfo, void *arg);
 counts *new_counts(void);
 
 /*
- *      free_counts - free a counts structure
- */
-void free_counts(counts *cts);
-
-/*
  *      free_counts_list - free a list of counts structures
  */
-void free_counts_list(counts *ctslist);
+void free_counts_list(counts_umap &ctslist);
 
 /*
- *      dup_counts - duplicate a counts structure
+ *	dup_counts_umap - duplicate counts_umap
  */
-counts *dup_counts(counts *octs);
-
-/*
- *      dup_counts_list - duplicate a counts list
- */
-counts *dup_counts_list(counts *ctslist);
+counts_umap dup_counts_umap (const counts_umap &omap);
 
 /*
  *      find_counts - find a counts structure by name
  */
-counts *find_counts(counts *ctslist, const char *name);
+counts *find_counts(counts_umap &ctslist, const std::string &name);
 
 /*
  *      find_alloc_counts - find a counts structure by name or allocate a new
  *                          counts, name it, and add it to the end of the list
  */
-counts *find_alloc_counts(counts *ctslist, const char *name);
+counts *find_alloc_counts(counts_umap &ctslist, const std::string &name);
 
 /*
  *      update_counts_on_run - update a counts struct on the running of a job
@@ -294,13 +269,14 @@ void update_counts_on_end(counts *cts, resource_req *resreq);
  *			max, we free the old, and dup the new and attach it
  *			in.
  *
- *	  \param cmax    - current max
+ *	  \param cmax    - current max that will be updated.
  *	  \param new     - new counts lists.  If anything in this list is
  *			   greater than the cur_max, it needs to be dup'd.
  *
- *	  returns the new max or NULL on error
+ *	  returns void
  */
-counts *counts_max(counts *cmax, counts *ncounts);
+void counts_max(counts_umap &cmax, counts_umap &ncounts);
+void counts_max(counts_umap &cmax, counts *ncounts);
 
 /*
  *      check_run_job - function used by resource_resv_filter to filter out

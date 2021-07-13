@@ -66,7 +66,6 @@ noinst_HEADERS = \
 	libpbs.h \
 	libsec.h \
 	libutil.h \
-	limits_if.h \
 	list_link.h \
 	log.h \
 	Long_.h \

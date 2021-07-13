@@ -280,15 +280,10 @@ cmp_nspec_by_sub_seq(const void *v1, const void *v2)
  * @retval	0 	: if q1 == q2
  * @retval	-1  : if q1 > q2
  */
-int
-cmp_queue_prio_dsc(const void *q1, const void *q2)
+bool
+cmp_queue_prio_dsc (const queue_info *q1, const queue_info *q2)
 {
-	if ((*(queue_info **) q1)->priority < (*(queue_info **) q2)->priority)
-		return 1;
-	else if ((*(queue_info **) q1)->priority > (*(queue_info **) q2)->priority)
-		return -1;
-	else
-		return 0;
+	return (q2->priority < q1->priority);
 }
 
 /**
@@ -1208,15 +1203,15 @@ sort_jobs(status *policy, server_info *sinfo)
 			/* cycle through queues and sort them on the basis of preemption priority,
 			 * preempted jobs, and fairshare usage
 			 */
-			for (int i = 0; i < sinfo->num_queues; i++) {
-				if (sinfo->queues[i]->sc.total > 0) {
-					qsort(sinfo->queues[i]->jobs, sinfo->queues[i]->sc.total,
+			for (auto qinfo: sinfo->queues) {
+				if (qinfo->sc.total > 0) {
+					qsort(qinfo->jobs, qinfo->sc.total,
 						sizeof(resource_resv*), cmp_sort);
 				}
 			}
-			for (int count = 0; count != sinfo->num_queues; count++) {
-				for (int index = 0; index < sinfo->queues[count]->sc.total; index++) {
-					sinfo->jobs[job_index] = sinfo->queues[count]->jobs[index];
+			for (auto qinfo: sinfo->queues) {
+				for (int index = 0; index < qinfo->sc.total; index++) {
+					sinfo->jobs[job_index] = qinfo->jobs[index];
 					job_index++;
 				}
 			}
@@ -1228,8 +1223,8 @@ sort_jobs(status *policy, server_info *sinfo)
 		}
 	}
 	else if (policy->by_queue) {
-		for (int i = 0; i < sinfo->num_queues; i++) {
-			qsort(sinfo->queues[i]->jobs, count_array(sinfo->queues[i]->jobs), sizeof(resource_resv *), cmp_sort);
+		for (auto qinfo: sinfo->queues) {
+			qsort(qinfo->jobs, count_array(qinfo->jobs), sizeof(resource_resv *), cmp_sort);
 		}
 		qsort(sinfo->jobs, count_array(sinfo->jobs), sizeof(resource_resv*), cmp_sort);
 	}

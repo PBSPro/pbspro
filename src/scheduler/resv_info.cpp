@@ -1060,9 +1060,11 @@ check_new_reservations(status *policy, int pbs_sd, resource_resv **resvs, server
 			/* Clone the real universe for simulation scratch work. This universe
 			 * will be garbage collected after simulation completes.
 			 */
-			nsinfo = dup_server_info(sinfo);
-			if (nsinfo == NULL)
+			try {
+				nsinfo = new server_info(*sinfo);
+			} catch (std::exception &e) {
 				return -1;
+			}
 
 			/* Resource reservations are ordered by event time, in the case of a
 			 * standing reservation, the first to be found will be the "parent"
@@ -1074,7 +1076,7 @@ check_new_reservations(status *policy, int pbs_sd, resource_resv **resvs, server
 					sinfo->resvs[i]->name,
 					"Error determining if reservation can be confirmed: "
 					"Resource not found.");
-				free_server(nsinfo);
+				delete nsinfo;
 				return -1;
 			}
 
@@ -1115,7 +1117,7 @@ check_new_reservations(status *policy, int pbs_sd, resource_resv **resvs, server
 						log_event(PBSEVENT_RESV, PBS_EVENTCLASS_RESV, LOG_INFO,
 							sinfo->resvs[i]->name,
 							"Error unrolling standing reservation.");
-						free_server(nsinfo);
+						delete nsinfo;
 						return -1;
 					}
 				}
@@ -1126,7 +1128,7 @@ check_new_reservations(status *policy, int pbs_sd, resource_resv **resvs, server
 					 */
 					occr_execvnodes_arr = static_cast<char **>(malloc(sizeof(char *)));
 					if (occr_execvnodes_arr == NULL) {
-						free_server(nsinfo);
+						delete nsinfo;
 						log_err(errno, __func__, MEM_ERR_MSG);
 						return -1;
 					}
@@ -1273,7 +1275,7 @@ check_new_reservations(status *policy, int pbs_sd, resource_resv **resvs, server
 			occr_execvnodes_arr = NULL;
 
 			/* Clean up simulated server info */
-			free_server(nsinfo);
+			delete nsinfo;
 		}
 		if (sinfo->resvs[i]->resv->resv_state == RESV_BEING_ALTERED)
 			have_alter_request = 1;
